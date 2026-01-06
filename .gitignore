@@ -1,6 +1,6 @@
 # Project specific
-data/mountains.db
-data/conditions_cache/
+powder/data/mountains.db
+powder/data/conditions_cache/
 *.log
 
 # Byte-compiled / optimized / DLL files
