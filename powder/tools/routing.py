@@ -9,6 +9,16 @@ load_dotenv()
 BASE_URL = "https://api.openrouteservice.org/v2/directions/driving-car"
 
 
+def estimate_max_distance_km(max_drive_hours: float) -> float:
+    """
+    Estimate max haversine distance from drive time for prefiltering.
+
+    Uses 120 km/h (~75 mph) to be generous - better to include
+    extra candidates than miss reachable mountains.
+    """
+    return max_drive_hours * 120
+
+
 def get_drive_time(
     start_lat: float,
     start_lon: float,

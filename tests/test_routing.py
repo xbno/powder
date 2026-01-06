@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from powder.tools.routing import get_drive_time, get_drive_times_batch
+from powder.tools.routing import get_drive_time, get_drive_times_batch, estimate_max_distance_km
 
 
 def make_mock_response(duration_sec: float, distance_m: float) -> dict:
@@ -87,6 +87,23 @@ class TestDriveTimeBatch:
 
             for i, result in enumerate(results):
                 assert result["duration_minutes"] == expected_minutes[i]
+
+
+class TestEstimateDistance:
+    """Test drive time to distance estimation."""
+
+    @pytest.mark.parametrize(
+        "hours, expected_km",
+        [
+            (1.0, 120.0),    # 1 hour
+            (2.0, 240.0),    # 2 hours
+            (2.5, 300.0),    # 2.5 hours - typical "day trip" max
+            (3.5, 420.0),    # 3.5 hours - longer trip
+        ],
+    )
+    def test_hours_to_km(self, hours, expected_km):
+        """Test time to distance conversion at 120 km/h."""
+        assert estimate_max_distance_km(hours) == expected_km
 
 
 class TestAPIKeyHandling:
