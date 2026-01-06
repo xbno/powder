@@ -32,11 +32,17 @@ class Mountain(Base):
     glades = Column(Text)  # comma-separated: "easy,intermediate,hard"
     pass_types = Column(Text)  # comma-separated: "ikon,indy"
     allows_snowboarding = Column(Boolean, default=True)
-    lift_types = Column(Text)  # comma-separated: "bubble,gondola,highspeed,fixed"
+    lift_types = Column(Text)  # comma-separated: "bubble,gondola,highspeed,fixed,tram"
     has_night_skiing = Column(Boolean, default=False)
     avg_weekday_price = Column(Integer)
     avg_weekend_price = Column(Integer)
     website = Column(String)
+    # Snowmaking (critical for Northeast)
+    snowmaking_pct = Column(Integer)  # 0-100, % of terrain with coverage
+    # Beginner/Family facilities
+    has_magic_carpet = Column(Boolean, default=False)
+    has_ski_school = Column(Boolean, default=True)
+    learning_area_quality = Column(Text)  # "excellent", "good", "basic"
 
 
 def get_engine(db_path: Path | str = ":memory:"):
@@ -71,13 +77,32 @@ def query_mountains(
     lat: float,
     lon: float,
     max_distance_km: float = 300,
+    # Hard filters
     pass_type: str | None = None,
     allows_snowboarding: bool | None = None,
+    needs_terrain_parks: bool | None = None,
+    needs_glades: bool | None = None,
+    needs_night_skiing: bool | None = None,
+    needs_beginner_terrain: bool | None = None,
+    needs_expert_terrain: bool | None = None,
 ) -> list[dict]:
     """
     Query mountains within radius matching filters.
 
-    Returns list of dicts with mountain data + distance_km.
+    Args:
+        session: SQLAlchemy session
+        lat, lon: User's location
+        max_distance_km: Max haversine distance
+        pass_type: Filter by pass (epic/ikon/indy)
+        allows_snowboarding: Filter snowboard-friendly
+        needs_terrain_parks: Require terrain parks
+        needs_glades: Require glades/tree skiing
+        needs_night_skiing: Require night skiing
+        needs_beginner_terrain: Require magic carpet + good green %
+        needs_expert_terrain: Require double black terrain
+
+    Returns:
+        List of dicts with mountain data + distance_km, sorted by distance.
     """
     query = session.query(Mountain)
 
@@ -86,6 +111,22 @@ def query_mountains(
 
     if pass_type:
         query = query.filter(Mountain.pass_types.contains(pass_type))
+
+    if needs_terrain_parks:
+        query = query.filter(Mountain.terrain_parks.isnot(None))
+
+    if needs_glades:
+        query = query.filter(Mountain.glades.isnot(None))
+
+    if needs_night_skiing:
+        query = query.filter(Mountain.has_night_skiing == True)
+
+    if needs_beginner_terrain:
+        query = query.filter(Mountain.has_magic_carpet == True)
+        query = query.filter(Mountain.green_pct >= 15)
+
+    if needs_expert_terrain:
+        query = query.filter(Mountain.double_black_pct > 0)
 
     results = []
     for m in query.all():
@@ -103,13 +144,19 @@ def query_mountains(
                 "green_pct": m.green_pct,
                 "blue_pct": m.blue_pct,
                 "black_pct": m.black_pct,
+                "double_black_pct": m.double_black_pct,
                 "terrain_parks": m.terrain_parks,
                 "glades": m.glades,
                 "pass_types": m.pass_types,
                 "allows_snowboarding": m.allows_snowboarding,
                 "lift_types": m.lift_types,
+                "has_night_skiing": m.has_night_skiing,
                 "avg_weekday_price": m.avg_weekday_price,
                 "avg_weekend_price": m.avg_weekend_price,
+                "snowmaking_pct": m.snowmaking_pct,
+                "has_magic_carpet": m.has_magic_carpet,
+                "has_ski_school": m.has_ski_school,
+                "learning_area_quality": m.learning_area_quality,
                 "distance_km": round(dist, 1),
             })
 
