@@ -521,7 +521,7 @@ def get_drive_time(start_lat, start_lon, end_lat, end_lon) -> str:
 
 ### Ground Truth Dataset
 
-Build labeled examples of `(query, conditions, correct_recommendation)`:
+Build labeled examples with **intermediate outputs** for independent signature optimization:
 
 ```python
 {
@@ -529,24 +529,141 @@ Build labeled examples of `(query, conditions, correct_recommendation)`:
     "query": "Best powder day within 3hrs of Boston, I have Ikon pass",
     "query_date": "2024-02-15",
     "user_location": {"lat": 42.3601, "lon": -71.0589},  # Boston
-    "conditions_snapshot": {
-        "killington": {"snow_depth": 80, "24hr_snow": 20, ...},
-        "stowe": {"snow_depth": 90, "24hr_snow": 8, ...},
-        "sugarbush": {"snow_depth": 75, "24hr_snow": 25, ...},
-        ...
+
+    # === ParseSkiQuery ground truth ===
+    "parse_expected": {
+        "target_date": "2024-02-15",
+        "max_drive_hours": 3.0,
+        "pass_type": "ikon",
+        "needs_terrain_parks": False,
+        "needs_glades": False,
+        "needs_beginner_terrain": False,
+        "needs_expert_terrain": False,
+        "skill_level": None,
+        "activity": None,
+        "vibe": "powder_chase",
     },
-    "ground_truth": {
-        "top_pick": "Sugarbush",
-        "acceptable": ["Sugarbush", "Killington"],  # Any of these valid
-        "reasoning": "10 inches fresh overnight, Ikon pass accepted, 3hr drive"
-    }
+
+    # === Mocked API data (conditions snapshot) ===
+    "conditions_snapshot": {
+        "jay_peak": {"snow_depth": 90, "fresh_24h": 15, "temp": -5, "wind": 12, ...},
+        "stowe": {"snow_depth": 80, "fresh_24h": 8, "temp": -3, "wind": 20, ...},
+        "sugarbush": {"snow_depth": 75, "fresh_24h": 12, "temp": -4, "wind": 15, ...},
+    },
+
+    # === AssessConditions ground truth ===
+    "assess_expected": {
+        "day_quality": "excellent",
+        "best_available": "Jay Peak has 15cm fresh, best snow in region",
+        "day_context": "Cold temps preserving powder, moderate winds",
+    },
+
+    # === ScoreMountain ground truth (per mountain) ===
+    "score_expected": {
+        "jay_peak": {
+            "score": 92,
+            "key_pros": "Best fresh snow (15cm), Ikon pass, great glades",
+            "key_cons": "Longest drive (3.5hrs)",
+            "tradeoff_note": "Best snow but longest drive",
+        },
+        "stowe": {
+            "score": 65,
+            "key_pros": "Good base depth, quality terrain",
+            "key_cons": "Not on Ikon pass, less fresh snow",
+            "tradeoff_note": "Would be great but wrong pass type",
+        },
+        "sugarbush": {
+            "score": 85,
+            "key_pros": "12cm fresh, Ikon pass, shorter drive",
+            "key_cons": "Slightly less snow than Jay Peak",
+            "tradeoff_note": "Good balance of snow and convenience",
+        },
+    },
+
+    # === GenerateRecommendation ground truth ===
+    "recommend_expected": {
+        "top_pick": "Jay Peak",
+        "acceptable": ["Jay Peak", "Sugarbush"],  # Either valid
+        "reasoning": "15cm fresh powder, Ikon pass accepted, worth the drive on a powder day",
+    },
 }
 ```
+
+**This structure enables:**
+1. **Independent signature optimization** - Run GEPA on ParseSkiQuery using `parse_expected`, on AssessConditions using `assess_expected`, etc.
+2. **Full pipeline evaluation** - Test end-to-end against `recommend_expected`
+3. **Error analysis** - Identify which step is failing (parsing? scoring? final rec?)
 
 **Sources for ground truth:**
 - Personal knowledge of past ski days
 - Reddit r/skiing and r/snowboarding trip reports
 - Reconstruct from historical weather data
+
+### Dual Architecture Approach
+
+Maintain **two agents** evaluated against the same dataset:
+
+1. **ReAct Agent** (current) - Flexible, uses tools dynamically with SkiRecommendation signature
+2. **Explicit Pipeline** - Chains signatures: ParseSkiQuery → AssessConditions → ScoreMountain → GenerateRecommendation
+
+```python
+class SkiPipeline(dspy.Module):
+    """Explicit multi-step pipeline for independent optimization."""
+
+    def __init__(self):
+        self.parse = dspy.Predict(ParseSkiQuery)
+        self.assess = dspy.Predict(AssessConditions)
+        self.score = dspy.Predict(ScoreMountain)
+        self.recommend = dspy.Predict(GenerateRecommendation)
+
+    def forward(self, query, user_context):
+        # Step 1: Parse query
+        parsed = self.parse(query=query, user_context=user_context)
+
+        # Step 2: Filter mountains (tool call, not LLM)
+        candidates = search_mountains(
+            max_drive_hours=parsed.max_drive_hours or 3.0,
+            pass_type=parsed.pass_type,
+            needs_terrain_parks=parsed.needs_terrain_parks,
+            ...
+        )
+
+        # Step 3: Get conditions for each candidate (tool calls)
+        enriched = []
+        for m in json.loads(candidates):
+            conditions = get_conditions(m['lat'], m['lon'], parsed.target_date)
+            enriched.append({**m, **json.loads(conditions)})
+
+        # Step 4: Assess overall conditions
+        assessment = self.assess(
+            all_candidates=json.dumps(enriched),
+            user_preferences=json.dumps(asdict(parsed))
+        )
+
+        # Step 5: Score each mountain
+        scored = []
+        for m in enriched:
+            score_result = self.score(
+                mountain=json.dumps(m),
+                user_preferences=json.dumps(asdict(parsed)),
+                day_context=json.dumps(asdict(assessment))
+            )
+            scored.append({**m, **asdict(score_result)})
+
+        # Step 6: Generate recommendation
+        crowd = check_crowd_level(parsed.target_date, enriched[0]['state'])
+        return self.recommend(
+            query=query,
+            day_assessment=json.dumps(asdict(assessment)),
+            scored_candidates=json.dumps(scored),
+            crowd_context=crowd
+        )
+```
+
+**Benefits of dual approach:**
+- Compare which architecture GEPA optimizes better
+- ReAct as flexible fallback
+- Pipeline for fine-grained control and debugging
 
 ### Metrics
 
