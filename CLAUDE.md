@@ -30,6 +30,36 @@ powder/
     └── backtest.py
 ```
 
+## Testing Style
+
+Use `pytest` with `@pytest.mark.parametrize` for data-driven tests:
+
+```python
+@pytest.mark.parametrize(
+    "input_val, expected_output",
+    [
+        # Descriptive comment for this case
+        (input1, expected1),
+        # Another case
+        (input2, expected2),
+    ],
+)
+def test_something(self, input_val, expected_output):
+    """Test description."""
+    result = function_under_test(input_val)
+    assert result == expected_output
+```
+
+For API mocks, use `unittest.mock.patch` with `side_effect` for multiple responses:
+
+```python
+with patch("powder.tools.module.httpx.get") as mock_get:
+    mock_get.return_value = MagicMock(json=MagicMock(return_value=mock_response))
+    result = function_under_test()
+```
+
+Keep test data inline in parametrize tuples - no separate fixtures for simple cases.
+
 ## Key Decisions
 
 - **Region**: Northeast US (Vermont, New Hampshire, Maine, New York, Massachusetts)
