@@ -1,0 +1,30 @@
+# Core
+dspy-ai
+python-dotenv
+pydantic
+
+# Database
+sqlalchemy
+
+# APIs
+httpx
+openrouteservice
+
+# Data processing
+pandas
+numpy
+
+# Geospatial
+geopy
+
+# Testing
+pytest
+pytest-cov
+pytest-asyncio
+
+# Development
+ipykernel
+
+# Utilities
+rich
+loguru
