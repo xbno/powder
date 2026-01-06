@@ -8,6 +8,7 @@ from powder.signatures import SkiRecommendation
 from powder.tools.database import get_engine, query_mountains
 from powder.tools.weather import get_conditions
 from powder.tools.routing import get_drive_time, estimate_max_distance_km
+from powder.tools.crowds import get_crowd_context
 
 from sqlalchemy.orm import sessionmaker
 
@@ -46,15 +47,25 @@ def build_user_context(
 def search_mountains(
     max_drive_hours: float = 3.0,
     pass_type: str | None = None,
+    needs_terrain_parks: bool = False,
+    needs_glades: bool = False,
+    needs_night_skiing: bool = False,
+    needs_beginner_terrain: bool = False,
+    needs_expert_terrain: bool = False,
     user_lat: float = 42.3601,
     user_lon: float = -71.0589,
 ) -> str:
     """
-    Search for ski mountains within driving distance.
+    Search for ski mountains within driving distance matching filters.
 
     Args:
         max_drive_hours: Maximum driving time in hours (default 3.0)
         pass_type: Filter by pass type - 'epic', 'ikon', or 'indy' (optional)
+        needs_terrain_parks: Only return mountains with terrain parks
+        needs_glades: Only return mountains with glades/tree skiing
+        needs_night_skiing: Only return mountains with night skiing
+        needs_beginner_terrain: Only return mountains with magic carpet + good green terrain
+        needs_expert_terrain: Only return mountains with double black terrain
         user_lat: User's latitude (default Boston)
         user_lon: User's longitude (default Boston)
 
@@ -80,6 +91,11 @@ def search_mountains(
             lon=user_lon,
             max_distance_km=max_distance_km,
             pass_type=pass_type,
+            needs_terrain_parks=needs_terrain_parks if needs_terrain_parks else None,
+            needs_glades=needs_glades if needs_glades else None,
+            needs_night_skiing=needs_night_skiing if needs_night_skiing else None,
+            needs_beginner_terrain=needs_beginner_terrain if needs_beginner_terrain else None,
+            needs_expert_terrain=needs_expert_terrain if needs_expert_terrain else None,
         )
         return json.dumps(results, indent=2)
     finally:
@@ -138,6 +154,27 @@ def get_driving_time(
     return json.dumps(result, indent=2)
 
 
+def check_crowd_level(
+    target_date: str,
+    mountain_state: str,
+) -> str:
+    """
+    Check expected crowd levels for a date and mountain location.
+
+    Args:
+        target_date: Date to check (YYYY-MM-DD format)
+        mountain_state: Two-letter state code (e.g., 'VT', 'NH', 'ME')
+
+    Returns:
+        JSON string with crowd_level, vacation_week info, and crowd_note.
+    """
+    import json
+
+    check_date = date.fromisoformat(target_date)
+    result = get_crowd_context(check_date, mountain_state)
+    return json.dumps(result, indent=2)
+
+
 def create_agent() -> dspy.ReAct:
     """
     Create the ski recommendation ReAct agent.
@@ -149,6 +186,7 @@ def create_agent() -> dspy.ReAct:
         dspy.Tool(search_mountains),
         dspy.Tool(get_mountain_conditions),
         dspy.Tool(get_driving_time),
+        dspy.Tool(check_crowd_level),
     ]
 
     agent = dspy.ReAct(

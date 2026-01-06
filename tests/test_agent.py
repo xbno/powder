@@ -83,15 +83,16 @@ class TestAgentCreation:
         agent = create_agent()
         assert isinstance(agent, dspy.ReAct)
 
-    def test_agent_has_three_tools(self):
+    def test_agent_has_expected_tools(self):
         """Test that agent has the expected tools."""
         agent = create_agent()
 
-        # ReAct stores tools as dict
+        # ReAct stores tools as dict (includes built-in 'finish')
         tool_names = list(agent.tools.keys())
         assert "search_mountains" in tool_names
         assert "get_mountain_conditions" in tool_names
         assert "get_driving_time" in tool_names
+        assert "check_crowd_level" in tool_names
 
 
 class TestSignature:
