@@ -14,9 +14,11 @@ class ParseSkiQuery(dspy.Signature):
     user_context: str = dspy.InputField(desc="Current date, location defaults")
 
     # Hard filters (drive DB query) - flattened from all group members
-    target_date: str = dspy.OutputField(desc="YYYY-MM-DD, 'today', or 'tomorrow'")
-    max_drive_hours: float = dspy.OutputField(desc="Max drive time, null if not specified")
-    pass_type: str = dspy.OutputField(desc="epic/ikon/indy or null")
+    target_date: str = dspy.OutputField(
+        desc="YYYY-MM-DD, 'today', 'tomorrow', or 'unspecified' if no date mentioned"
+    )
+    max_drive_hours: float | None = dspy.OutputField(desc="Max drive time, null if not specified")
+    pass_type: str | None = dspy.OutputField(desc="epic/ikon/indy or null")
     needs_terrain_parks: bool = dspy.OutputField(
         desc="True if mentions park, jumps, rails, boxes, halfpipe, pipe, features, freestyle"
     )
@@ -34,9 +36,9 @@ class ParseSkiQuery(dspy.Signature):
     )
 
     # Soft preferences (affect scoring)
-    skill_level: str = dspy.OutputField(desc="beginner/intermediate/advanced/expert")
-    activity: str = dspy.OutputField(desc="ski/snowboard/either")
-    vibe: str = dspy.OutputField(desc="powder_chase/casual/park_day/learning/family_day")
+    skill_level: str | None = dspy.OutputField(desc="beginner/intermediate/advanced/expert or null")
+    activity: str | None = dspy.OutputField(desc="ski/snowboard/either or null")
+    vibe: str | None = dspy.OutputField(desc="powder_chase/casual/park_day/learning/family_day or null")
 
 
 class AssessConditions(dspy.Signature):

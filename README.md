@@ -19,6 +19,30 @@ Requires [uv](https://github.com/astral-sh/uv) for package management.
 
 ```bash
 OPEN_ROUTE_SERVICE_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here
+```
+
+## Usage
+
+```bash
+# Run with a query
+.venv/bin/python -m powder.run "Where should I ski tomorrow? I have an Ikon pass."
+
+# Run with default query
+.venv/bin/python -m powder.run
+
+# Use a different model
+.venv/bin/python -m powder.run "Best powder day?" --model anthropic/claude-sonnet-4-20250514
+```
+
+Run tests:
+
+```bash
+# Run all non-LLM tests (fast, no API key needed)
+.venv/bin/python -m pytest -m "not llm"
+
+# Run LLM tests (requires ANTHROPIC_API_KEY)
+.venv/bin/python -m pytest -m llm -v -s
 ```
 
 ## Stack
