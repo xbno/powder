@@ -184,25 +184,29 @@ class TestEndToEndEval:
             assert ex.query
             assert ex.query_date
             assert ex.user_location
-            assert ex.expected_top_pick
-            assert ex.expected_in_top_3
+            # Skip day examples have empty expected lists
+            if not ex.expect_skip:
+                assert ex.expected_top_pick
+                assert ex.expected_in_top_3
 
     def test_hit_at_1_calculation(self):
         """Hit@1 correctly identifies matches."""
-        example = end_to_end.EXAMPLES[0]  # powder_ikon_boston
+        # powder_ikon_feb17 - expected_top_pick=["Sugarloaf"]
+        example = end_to_end.EXAMPLES[0]
 
         # Matching prediction
-        assert end_to_end.calculate_hit_at_1(example, "Jay Peak is the best choice")
-        assert end_to_end.calculate_hit_at_1(example, "Go to Sugarbush for powder")
+        assert end_to_end.calculate_hit_at_1(example, "Sugarloaf is the best choice")
+        assert end_to_end.calculate_hit_at_1(example, "Go to Sugarloaf for powder")
 
         # Non-matching (Stowe is Epic, not Ikon)
         assert not end_to_end.calculate_hit_at_1(example, "Stowe has the most snow")
 
     def test_hit_at_3_calculation(self):
         """Hit@3 correctly checks top 3 list."""
+        # powder_ikon_feb17 - expected_in_top_3=["Sugarloaf", "Sugarbush", "Killington"]
         example = end_to_end.EXAMPLES[0]
 
-        assert end_to_end.calculate_hit_at_3(example, ["Jay Peak", "Stowe", "Okemo"])
+        assert end_to_end.calculate_hit_at_3(example, ["Sugarloaf", "Stowe", "Okemo"])
         assert end_to_end.calculate_hit_at_3(example, ["Stowe", "Sugarbush", "Okemo"])
         assert not end_to_end.calculate_hit_at_3(example, ["Stowe", "Okemo", "Mount Snow"])
 
@@ -259,7 +263,7 @@ class TestEvalDatasetCoverage:
         assert "glades" in all_queries.lower() or "tree" in all_queries.lower()
 
     def test_end_to_end_covers_pass_types(self):
-        """E2E dataset tests all major pass types."""
+        """E2E dataset tests major pass types."""
         pass_types = set()
         for ex in end_to_end.EXAMPLES:
             if "pass_type" in ex.constraints:
@@ -267,7 +271,7 @@ class TestEvalDatasetCoverage:
 
         assert "ikon" in pass_types
         assert "epic" in pass_types
-        assert "indy" in pass_types
+        # indy removed - focusing on weather/conditions over pass types
 
     def test_end_to_end_covers_user_locations(self):
         """E2E dataset tests multiple user locations."""

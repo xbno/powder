@@ -20,6 +20,7 @@ from unittest.mock import patch, MagicMock
 
 from powder.pipeline import SkiPipeline
 from powder.tools.database import haversine_km
+from powder.tools.weather import _weather_code_to_description
 
 
 def load_fixture(fixture_name: str, fixtures_dir: Path = None) -> dict:
@@ -54,6 +55,27 @@ def load_fixture(fixture_name: str, fixtures_dir: Path = None) -> dict:
     raise FileNotFoundError(f"Fixture not found: {fixture_name}")
 
 
+def _load_mountain_coords() -> dict[str, tuple[float, float]]:
+    """Load all mountain coordinates from the database."""
+    from sqlalchemy.orm import sessionmaker
+    from powder.tools.database import get_engine, Mountain
+
+    db_path = Path(__file__).parent.parent / "data" / "mountains.db"
+    engine = get_engine(db_path)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        mountains = session.query(Mountain).all()
+        return {m.name: (m.lat, m.lon) for m in mountains}
+    finally:
+        session.close()
+
+
+# Cache mountain coords to avoid repeated DB queries
+_MOUNTAIN_COORDS_CACHE: dict[str, tuple[float, float]] | None = None
+
+
 def find_mountain_by_coords(
     lat: float, lon: float, conditions: dict[str, dict]
 ) -> tuple[str, dict] | None:
@@ -62,28 +84,14 @@ def find_mountain_by_coords(
 
     Returns (name, conditions_dict) or None if no match.
     """
-    # Mountain coordinates (from database)
-    MOUNTAIN_COORDS = {
-        "Stowe": (44.5258, -72.7858),
-        "Killington": (43.6045, -72.8201),
-        "Jay Peak": (44.97, -72.47),
-        "Sugarbush": (44.14, -72.88),
-        "Okemo": (43.41, -72.72),
-        "Mount Snow": (42.96, -72.92),
-        "Stratton": (43.12, -72.90),
-        "Mad River Glen": (44.2009, -72.9246),
-        "Smugglers' Notch": (44.5553, -72.7957),
-        "Waterville Valley": (43.9592, -71.5233),
-        "Gunstock": (43.53, -71.37),
-        "Attitash": (44.09, -71.21),
-        "Bretton Woods": (44.2558, -71.4573),
-        "Nashoba Valley": (42.48, -71.49),
-    }
+    global _MOUNTAIN_COORDS_CACHE
+    if _MOUNTAIN_COORDS_CACHE is None:
+        _MOUNTAIN_COORDS_CACHE = _load_mountain_coords()
 
     best_match = None
     best_distance = float("inf")
 
-    for name, (mtn_lat, mtn_lon) in MOUNTAIN_COORDS.items():
+    for name, (mtn_lat, mtn_lon) in _MOUNTAIN_COORDS_CACHE.items():
         if name not in conditions:
             continue
 
@@ -105,11 +113,18 @@ def make_mock_conditions(conditions: dict[str, dict]) -> callable:
     Returns:
         Mock function compatible with weather.get_conditions signature
     """
+
     def mock_get_conditions(lat: float, lon: float, target_date) -> dict:
         match = find_mountain_by_coords(lat, lon, conditions)
 
         if match:
             name, cond = match
+            weather_code = cond.get("weather_code", 0)
+            # Translate weather_code to description if not provided
+            weather_desc = cond.get(
+                "weather_description",
+                _weather_code_to_description(weather_code)
+            )
             # Return in expected format
             return {
                 "fresh_snow_24h_cm": cond.get("fresh_snow_24h_cm", 0),
@@ -122,8 +137,8 @@ def make_mock_conditions(conditions: dict[str, dict]) -> callable:
                 "wind_mph": cond.get("wind_mph", 0),
                 "visibility_km": cond.get("visibility_km", 10),
                 "visibility_mi": cond.get("visibility_mi", 6),
-                "weather_code": cond.get("weather_code", 0),
-                "weather_description": cond.get("weather_description", "Clear"),
+                "weather_code": weather_code,
+                "weather_description": weather_desc,
             }
 
         # Default conditions if no match
@@ -156,9 +171,9 @@ def mock_weather_api(conditions: dict[str, dict]) -> Generator[None, None, None]
     mock_fn = make_mock_conditions(conditions)
 
     # Patch at all locations where get_conditions might be imported
-    with patch("powder.pipeline.get_conditions", mock_fn), \
-         patch("powder.tools.weather.get_conditions", mock_fn), \
-         patch("powder.agent.get_conditions", mock_fn):
+    with patch("powder.pipeline.get_conditions", mock_fn), patch(
+        "powder.tools.weather.get_conditions", mock_fn
+    ), patch("powder.agent.get_conditions", mock_fn):
         yield
 
 
@@ -169,6 +184,7 @@ def mock_routing_api() -> Generator[None, None, None]:
 
     Uses haversine distance * 1.3 for rough drive time estimate.
     """
+
     def mock_get_drive_time(start_lat, start_lon, end_lat, end_lon) -> dict:
         distance_km = haversine_km(start_lat, start_lon, end_lat, end_lon)
         # Rough estimate: 80 km/h average speed with 1.3x factor for roads
@@ -182,9 +198,9 @@ def mock_routing_api() -> Generator[None, None, None]:
             "distance_mi": distance_km / 1.609,
         }
 
-    with patch("powder.pipeline.get_drive_time", mock_get_drive_time), \
-         patch("powder.tools.routing.get_drive_time", mock_get_drive_time), \
-         patch("powder.agent.get_drive_time", mock_get_drive_time):
+    with patch("powder.pipeline.get_drive_time", mock_get_drive_time), patch(
+        "powder.tools.routing.get_drive_time", mock_get_drive_time
+    ), patch("powder.agent.get_drive_time", mock_get_drive_time):
         yield
 
 
@@ -285,31 +301,38 @@ def run_react_with_mocks(
     }
 
 
-def run_backtest_example(example, conditions: dict[str, dict] = None) -> dict:
+def run_backtest_example(example) -> dict:
     """
     Run a single backtest example.
 
+    Loads conditions from fixtures based on example.query_date.
+
     Args:
-        example: EndToEndExample or similar with query, query_date, user_location, conditions_snapshot
-        conditions: Override conditions (uses example.conditions_snapshot if None)
+        example: EndToEndExample with query, query_date, user_location
 
     Returns:
         Dict with prediction and metrics
     """
-    conds = conditions or example.conditions_snapshot
+    # Load conditions from fixtures by date
+    date_str = example.query_date.isoformat()
+    conditions = load_fixture(date_str)
 
     result = run_pipeline_with_mocks(
         query=example.query,
         query_date=example.query_date,
         user_location=example.user_location,
-        conditions=conds,
+        conditions=conditions,
     )
 
     return {
         "example_id": example.id,
         "query": example.query,
         "predicted_top_pick": result["top_pick"],
-        "predicted_top_3": [s["mountain"]["name"] for s in result["scores"][:3]] if result["scores"] else [],
+        "predicted_top_3": (
+            [s["mountain"]["name"] for s in result["scores"][:3]]
+            if result["scores"]
+            else []
+        ),
         "candidates_count": len(result["candidates"]) if result["candidates"] else 0,
         "result": result,
     }
@@ -336,4 +359,6 @@ if __name__ == "__main__":
     )
 
     print(f"\nTop pick: {result['top_pick'][:100]}...")
-    print(f"Candidates found: {len(result['candidates']) if result['candidates'] else 0}")
+    print(
+        f"Candidates found: {len(result['candidates']) if result['candidates'] else 0}"
+    )

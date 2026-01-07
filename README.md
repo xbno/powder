@@ -23,33 +23,212 @@ The agent parses natural language queries to extract:
 
 ### Mountains Covered
 
-21+ Northeast US mountains with full metadata:
+31 Northeast US mountains with full metadata:
 
-- **Vermont**: Stowe, Killington, Sugarbush, Jay Peak, Okemo, Mount Snow, Stratton, Mad River Glen, Smugglers' Notch
-- **New Hampshire**: Waterville Valley, Gunstock, Attitash, Bretton Woods, Cannon Mountain, Cranmore, Loon Mountain, Mount Sunapee, Wildcat Mountain
-- **Maine**: Saddleback, Sugarloaf
-- **Massachusetts**: Nashoba Valley
+- **Vermont** (9): Jay Peak, Killington, Mad River Glen, Mount Snow, Okemo, Smugglers' Notch, Stowe, Stratton, Sugarbush
+- **New Hampshire** (9): Attitash, Bretton Woods, Cannon Mountain, Cranmore, Gunstock, Loon Mountain, Mount Sunapee, Waterville Valley, Wildcat Mountain
+- **New York** (6): Belleayre Mountain, Gore Mountain, Holiday Valley, Hunter Mountain, Whiteface, Windham Mountain
+- **Massachusetts** (4): Berkshire East, Jiminy Peak, Nashoba Valley, Wachusett Mountain
+- **Maine** (3): Saddleback, Sugarloaf, Sunday River
 
 Each mountain includes: coordinates, vertical drop, trail counts, terrain percentages, terrain parks, glades, pass types (Epic/Ikon/Indy), lift types, snowmaking %, learning facilities, pricing.
 
-### Conditions & Context
+**Example Schema (Killington):**
+```json
+{
+  "name": "Killington",
+  "state": "VT",
+  "lat": 43.6045,
+  "lon": -72.8201,
+  "vertical_drop": 3050,
+  "num_trails": 155,
+  "num_lifts": 22,
+  "green_pct": 17,
+  "blue_pct": 40,
+  "black_pct": 33,
+  "double_black_pct": 10,
+  "terrain_parks": "easy,intermediate,hard,superpipe",
+  "glades": "easy,intermediate,hard",
+  "pass_types": "ikon",
+  "allows_snowboarding": true,
+  "lift_types": "gondola,bubble,highspeed,fixed",
+  "has_night_skiing": true,
+  "avg_weekday_price": 145,
+  "avg_weekend_price": 190,
+  "snowmaking_pct": 71,
+  "has_magic_carpet": true,
+  "has_ski_school": true,
+  "learning_area_quality": "excellent"
+}
+```
 
-- **Weather**: Temperature, wind, visibility from Open-Meteo (free API)
-- **Snow**: Fresh snowfall (24h), snow depth
-- **Drive times**: Actual routing via OpenRouteService
-- **Crowds**: Holiday/vacation week detection (Christmas, MLK, February break)
+### Data Sources
 
-### Architecture
+The agent combines three types of data:
 
-Two agent implementations:
+#### Context (Provided at Query Time)
+| Input | Description | Example |
+|-------|-------------|---------|
+| `query` | Natural language request | "Best powder with Ikon pass?" |
+| `location` | User's starting point | Boston (lat: 42.36, lon: -71.06) |
+| `date` | Target ski date | 2025-02-17 |
 
-1. **Pipeline** (default) - Explicit 7-step flow with intermediate outputs:
-   ```
-   Parse Query → Search DB → Get Conditions → Get Drive Times
-   → Assess Day Quality → Score Mountains → Generate Recommendation
-   ```
+#### Database (Static Mountain Metadata)
+Queried via `search_mountains()` tool - see schema above. Filters by:
+- Pass type (Epic/Ikon/Indy)
+- Terrain features (parks, glades, night skiing)
+- Geographic bounds
 
-2. **ReAct** - Flexible tool-using agent that decides its own steps
+#### Tools (Dynamic API Calls)
+| Tool | Source | Returns |
+|------|--------|---------|
+| `get_conditions()` | Open-Meteo API | Fresh snow (24h), snow depth, temp, wind, visibility, weather code |
+| `get_drive_time()` | OpenRouteService API | Duration (minutes), distance (miles) |
+| `check_crowd_level()` | Date logic | Holiday/vacation week detection (Christmas, MLK, February break) |
+
+## Architecture
+
+Two agent implementations with tools available to both.
+
+### Tools:
+
+| Tool | Args | Returns | Notes |
+|------|------|---------|-------|
+| `search_mountains` | max_drive_hours, pass_type, needs_terrain_parks, needs_glades, needs_night_skiing, needs_beginner_terrain, needs_expert_terrain, user_lat, user_lon | JSON list of mountains | Uses Haversine prefilter. Agent must pass location explicitly. |
+| `get_mountain_conditions` | lat, lon, target_date | JSON with temp, wind, snow depth, fresh snow, weather | Agent calls per-mountain (no batch). |
+| `get_driving_time` | start_lat, start_lon, end_lat, end_lon | JSON with duration_minutes, distance | Agent must pass both origin and destination coords. |
+| `check_crowd_level` | target_date, mountain_state | JSON with crowd_level, vacation_week, crowd_note | Holiday/vacation detection. |
+
+### 1. Pipeline (Explicit Flow)
+
+Fixed 4-step flow with embedded tool calls and intermediate outputs at each stage:
+
+```mermaid
+flowchart LR
+    subgraph Context
+        Q[Query]
+        D[Date]
+        L[Location]
+    end
+
+    subgraph Tools
+        C[get_mountain_conditions]
+        DT[get_driving_time]
+        CR[check_crowd_level]
+        S[(search_mountains)]
+    end
+
+    subgraph Signatures
+        P[ParseSkiQuery]
+        A[AssessConditions]
+        SC[ScoreMountain]
+        G[GenerateRec]
+    end
+
+    Q --> P --> S
+    L --> S
+    S --> C
+    S --> DT
+    D --> C
+    D --> CR
+    L --> DT
+    C --> A
+    DT --> A
+    A --> SC
+    SC --> G
+    CR --> G
+
+    G --> R[Recommendation]
+```
+
+**DSPy Signatures (LLM calls):**
+
+| Signature | Input | Output | Purpose |
+|-----------|-------|--------|---------|
+| **ParseSkiQuery** | Query + user_context | Structured filters | Extract pass type, max drive time, terrain preferences, skill level. User context provides date/location for resolving "today/tomorrow". |
+| **AssessConditions** | Enriched candidates | Day quality assessment | Compare conditions *across all mountains* to determine if it's a powder day, icy day, or skip day. Provides context for scoring. |
+| **ScoreMountain** | Each candidate + assessment | Score (0-100) + pros/cons | Score each mountain considering conditions, terrain match, drive time. Uses day assessment to calibrate (e.g., lower bar on icy days). |
+| **GenerateRec** | Scores + crowd context | Final recommendation | Produce natural language recommendation with top pick, alternatives, and caveats. |
+
+**Why AssessConditions matters:** Without comparing across mountains, the agent can't distinguish "great day at Mountain X" from "Mountain X is the best of bad options". It enables responses like "Skip today, conditions are poor everywhere" or "Any of these would be great - pick based on drive time."
+
+### 2. ReAct (Flexible Agent)
+
+Autonomous loop - agent decides which tools to call and when to stop (max 8 iterations):
+
+```mermaid
+flowchart TB
+    subgraph Context
+        Q[Query]
+        D[Date]
+        L[Location]
+    end
+
+    Q --> UC[user_context string]
+    D --> UC
+    L --> UC
+
+    UC --> SR[SkiRecommendation Signature]
+
+    subgraph ReAct Loop
+        SR --> T[Thought]
+        T --> A[Action]
+        O[Observation]
+        O --> T
+    end
+
+    subgraph Tools
+        A -.-> DB[(search_mountains)]
+        A -.-> W[get_mountain_conditions]
+        A -.-> R[get_driving_time]
+        A -.-> CL[check_crowd_level]
+    end
+
+    DB -.-> O
+    W -.-> O
+    R -.-> O
+    CL -.-> O
+
+    T --> |Finish| F[Recommendation]
+```
+
+
+
+**Key differences from Pipeline:**
+- **No ParseSkiQuery** - agent interprets query directly in its reasoning
+- **No AssessConditions/ScoreMountain** - agent does comparative reasoning implicitly in Thought steps
+- **Flexible order** - agent chooses which tools to call and may skip some or call multiple times
+- **Single signature** - just `SkiRecommendation(query, user_context) → recommendation`
+
+### Execution Traces
+
+Save detailed execution traces with `--save-trace` for debugging and comparison:
+
+```bash
+# Compare both agents on the same query
+python -m powder --date 2025-03-29 --save-trace --pipeline "Epic pass powder?"
+python -m powder --date 2025-03-29 --save-trace "Epic pass powder?"
+```
+
+**Example traces:** [Pipeline](traces/pipeline_2025-03-29_20260107_135253.json) | [ReAct](traces/react_2025-03-29_20260107_135340.json)
+
+| Trace Contents | Pipeline | ReAct |
+|----------------|----------|-------|
+| `meta` | query, agent, date, location, model, timestamp | same |
+| `result.parsed` | Structured filters from ParseSkiQuery | - |
+| `result.candidates` | 7 mountains with conditions + drive times | - |
+| `result.day_assessment` | Day quality, best available, context | - |
+| `result.scores` | 7 scored mountains with pros/cons | - |
+| `result.recommendation` | - | Final text output |
+| `lm_history` | 10 LLM calls (Parse + Assess + 7×Score + Generate) | 9 LLM calls showing Thought→Action→Observation loop |
+
+The ReAct trace shows the agent's reasoning process:
+```
+Call 1: "I need to search for Epic pass mountains..."
+Call 3: "Mount Sunapee has 0cm fresh snow, let me check Mount Snow..."
+Call 5: "Attitash has 9.3cm fresh snow - best so far!"
+Call 7: "Let me check Stowe... 13.9cm! BEST POWDER"
+```
 
 ## Setup
 
@@ -61,9 +240,9 @@ make test     # Run tests (fast, no API calls)
 
 Requires [uv](https://github.com/astral-sh/uv) for package management.
 
-### Adding More Mountains
+### Adding More Mountains and Historic Weather Coverage
 
-Use the seed script to add mountains from the predefined list via Claude:
+Use the seed script to add mountains from the predefined list via Claude slash comand [`add_mountain.md`](.claude/commands/add_mountain.md). Update the hardcoded list in the script if you want to expand to other regions, etc.
 
 ```bash
 # List mountains not yet in the database
@@ -137,7 +316,7 @@ The evaluation framework measures agent performance with **deterministic metrics
 |--------|----------|-------|
 | **Hit@1** | 66.7% | **75.0%** |
 | **Hit@3** | 75.0% | **91.7%** |
-| **Constraint Satisfaction** | **92.3%** | 0.0%* |
+| **Constraint Satisfaction** | **92.3%** | na* |
 
 *ReAct constraint metric is a measurement artifact (can't parse constraints from unstructured text).
 

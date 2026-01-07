@@ -10,12 +10,17 @@ Usage:
 
     # Use Pipeline instead of ReAct
     python -m powder --pipeline "Best powder today?"
+
+    # Save execution trace for debugging
+    python -m powder --date 2025-03-29 --save-trace "Epic pass powder?"
 """
 
 import argparse
+import json
 import os
 import sys
-from datetime import date
+from datetime import date, datetime
+from pathlib import Path
 
 import dspy
 
@@ -59,6 +64,11 @@ Examples:
         default="anthropic/claude-haiku-4-5-20251001",
         help="Model to use (default: claude-haiku)",
     )
+    parser.add_argument(
+        "--save-trace",
+        action="store_true",
+        help="Save execution trace to traces/ directory",
+    )
 
     args = parser.parse_args()
 
@@ -94,8 +104,9 @@ Examples:
 
 def run_query(query: str, args):
     """Run a single query with the given arguments."""
-    # Configure DSPy
-    dspy.configure(lm=dspy.LM(args.model))
+    # Configure DSPy with LM we can access later for history
+    lm = dspy.LM(args.model)
+    dspy.configure(lm=lm)
 
     # Parse location
     LOCATIONS = {
@@ -126,15 +137,27 @@ def run_query(query: str, args):
         print("-" * 40)
 
         with mock_weather_api(conditions), mock_routing_api():
-            result = _run_agent(query, query_date, location, args.pipeline)
+            output, raw_result = _run_agent(query, query_date, location, args.pipeline)
     else:
-        result = _run_agent(query, query_date, location, args.pipeline)
+        output, raw_result = _run_agent(query, query_date, location, args.pipeline)
 
-    print(f"\n{result}")
+    print(f"\n{output}")
+
+    # Save trace if requested
+    if getattr(args, 'save_trace', False):
+        _save_trace(
+            query=query,
+            args=args,
+            location=location,
+            query_date=query_date,
+            lm_history=lm.history,
+            raw_result=raw_result,
+            use_pipeline=args.pipeline,
+        )
 
 
-def _run_agent(query: str, query_date: date | None, location: dict, use_pipeline: bool) -> str:
-    """Run either Pipeline or ReAct agent."""
+def _run_agent(query: str, query_date: date | None, location: dict, use_pipeline: bool) -> tuple[str, dict]:
+    """Run either Pipeline or ReAct agent. Returns (output_string, raw_result)."""
     if use_pipeline:
         from powder.pipeline import SkiPipeline
 
@@ -144,15 +167,92 @@ def _run_agent(query: str, query_date: date | None, location: dict, use_pipeline
             current_date=query_date,
             user_location=location,
         )
-        return f"**{result.top_pick}**\n\nAlternatives: {result.alternatives}\n\n{result.caveat}"
+        output = f"**{result.top_pick}**\n\nAlternatives: {result.alternatives}\n\n{result.caveat}"
+
+        # Extract intermediate results for trace
+        raw_result = {
+            "agent": "pipeline",
+            "top_pick": result.top_pick,
+            "alternatives": result.alternatives,
+            "caveat": result.caveat,
+            "parsed": result.parsed.model_dump() if hasattr(result.parsed, 'model_dump') else str(result.parsed),
+            "candidates": result.candidates,
+            "day_assessment": {
+                "day_quality": result.day_assessment.day_quality,
+                "best_available": result.day_assessment.best_available,
+                "day_context": result.day_assessment.day_context,
+            } if hasattr(result, 'day_assessment') else None,
+            "scores": result.scores,
+            "crowd_info": result.crowd_info if hasattr(result, 'crowd_info') else None,
+        }
+        return output, raw_result
     else:
         from powder.agent import recommend
 
-        return recommend(
+        recommendation = recommend(
             query=query,
             current_date=query_date,
             current_location=location,
         )
+        raw_result = {
+            "agent": "react",
+            "recommendation": recommendation,
+        }
+        return recommendation, raw_result
+
+
+def _save_trace(
+    query: str,
+    args,
+    location: dict,
+    query_date: date | None,
+    lm_history: list,
+    raw_result: dict,
+    use_pipeline: bool,
+):
+    """Save execution trace to a JSON file."""
+    traces_dir = Path(__file__).parent.parent / "traces"
+    traces_dir.mkdir(exist_ok=True)
+
+    # Build filename
+    agent_type = "pipeline" if use_pipeline else "react"
+    date_str = args.date or "live"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{agent_type}_{date_str}_{timestamp}.json"
+
+    # Process LM history for JSON serialization
+    serializable_history = []
+    for entry in lm_history:
+        serializable_entry = {
+            "prompt": entry.get("prompt"),
+            "messages": entry.get("messages"),
+            "outputs": entry.get("outputs"),
+            "usage": entry.get("usage"),
+            "cost": entry.get("cost"),
+            "timestamp": entry.get("timestamp"),
+            "model": entry.get("model"),
+        }
+        serializable_history.append(serializable_entry)
+
+    trace = {
+        "meta": {
+            "query": query,
+            "agent": agent_type,
+            "date": args.date,
+            "location": location,
+            "model": args.model,
+            "timestamp": datetime.now().isoformat(),
+        },
+        "result": raw_result,
+        "lm_history": serializable_history,
+    }
+
+    # Save trace
+    trace_path = traces_dir / filename
+    with open(trace_path, "w") as f:
+        json.dump(trace, f, indent=2, default=str)
+
+    print(f"\n📝 Trace saved to: {trace_path}")
 
 
 if __name__ == "__main__":
