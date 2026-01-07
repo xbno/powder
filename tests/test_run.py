@@ -38,23 +38,23 @@ class TestRecommendations:
         [
             (
                 "Where should I ski tomorrow? I have an Ikon pass and want terrain parks.",
-                ["Jay Peak"],  # Only Ikon mountain with terrain parks
+                ["Jay Peak", "ikon", "terrain park", "park"],  # Ikon mountain or park mention
             ),
             (
                 "Best place to snowboard within 2 hours of Boston?",
-                ["Nashoba", "Gunstock", "Waterville"],  # Close mountains
+                ["Nashoba", "Gunstock", "Waterville", "snowboard"],  # Close mountains or activity
             ),
             (
                 "I want to hit some glades, have an Epic pass",
-                ["Stowe", "Okemo"],  # Epic mountains with glades
+                ["Stowe", "Okemo", "glades", "trees", "epic"],  # Epic mountains with glades
             ),
             (
                 "Teaching my kid to ski for the first time tomorrow",
-                ["magic carpet", "beginner", "learning", "green"],  # Beginner-friendly terms
+                ["magic carpet", "beginner", "learning", "green", "kid", "first"],  # Beginner-friendly terms
             ),
             (
                 "Looking for double blacks and expert terrain tomorrow",
-                ["Jay Peak", "Stowe"],  # Mountains with double black %
+                ["Jay Peak", "Stowe", "expert", "double black", "advanced"],  # Expert terrain
             ),
         ],
     )

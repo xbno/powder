@@ -61,19 +61,35 @@ clean:
 # Rebuild virtual environment
 rebuild: clean venv install
 
-# Default test command
-test: test-unit
+# Default test command (excludes LLM tests)
+test: test-fast
 
-# Run unit tests
-test-unit:
+# Run fast tests (no LLM calls)
+test-fast:
 ifeq ($(wildcard $(PYTHON)),)
 	$(error "$(PYTHON) not found. Run 'make venv' first.")
 endif
-	@echo "Running unit tests..."
+	@echo "Running fast tests (no LLM)..."
+	$(PYTHON) -m pytest tests/ -v -m "not llm"
+
+# Run LLM tests only (requires ANTHROPIC_API_KEY)
+test-llm:
+ifeq ($(wildcard $(PYTHON)),)
+	$(error "$(PYTHON) not found. Run 'make venv' first.")
+endif
+	@echo "Running LLM tests..."
+	$(PYTHON) -m pytest tests/ -v -m "llm"
+
+# Run all tests
+test-all:
+ifeq ($(wildcard $(PYTHON)),)
+	$(error "$(PYTHON) not found. Run 'make venv' first.")
+endif
+	@echo "Running all tests..."
 	$(PYTHON) -m pytest tests/ -v
 
 # Run all tests with coverage
-test-all:
+test-cov:
 ifeq ($(wildcard $(PYTHON)),)
 	$(error "$(PYTHON) not found. Run 'make venv' first.")
 endif
@@ -112,8 +128,11 @@ help:
 	@echo "  make rebuild      - Rebuild virtual environment"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test         - Run unit tests"
-	@echo "  make test-all     - Run all tests with coverage"
+	@echo "  make test         - Run fast tests (no LLM calls)"
+	@echo "  make test-fast    - Run fast tests (no LLM calls)"
+	@echo "  make test-llm     - Run LLM tests only (requires ANTHROPIC_API_KEY)"
+	@echo "  make test-all     - Run all tests"
+	@echo "  make test-cov     - Run all tests with coverage"
 	@echo ""
 	@echo "Running:"
 	@echo "  make run          - Run the agent interactively"

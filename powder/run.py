@@ -7,7 +7,8 @@ import sys
 import dspy
 from dotenv import load_dotenv
 
-from powder.agent import recommend, build_user_context
+from powder.agent import recommend as react_recommend, build_user_context
+from powder.pipeline import recommend as pipeline_recommend
 from powder.signatures import ParseSkiQuery
 
 
@@ -46,6 +47,12 @@ def main():
         default="anthropic/claude-haiku-4-5-20251001",
         help="LLM model to use (default: anthropic/claude-haiku-4-5-20251001)",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["react", "pipeline"],
+        default="pipeline",
+        help="Agent mode: 'react' (dynamic tool use) or 'pipeline' (explicit steps)",
+    )
     args = parser.parse_args()
 
     # Load .env file
@@ -60,8 +67,15 @@ def main():
     # Clarify date if not specified
     query = clarify_date_if_needed(args.query)
 
-    result = recommend(query)
-    print(result)
+    if args.mode == "react":
+        result = react_recommend(query)
+        print(result)
+    else:
+        result = pipeline_recommend(query)
+        print(f"\nTop Pick: {result['top_pick']}")
+        print(f"\nAlternatives: {result['alternatives']}")
+        if result['caveat']:
+            print(f"\nNote: {result['caveat']}")
 
 
 if __name__ == "__main__":
