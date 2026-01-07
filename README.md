@@ -432,3 +432,61 @@ powder/
 - **Open-Meteo** - Weather/snow data (free, no API key)
 - **OpenRouteService** - Drive time calculations (free tier)
 - **SQLite + SQLAlchemy** - Mountain database
+
+## Future Improvements
+
+### Data Sources
+
+| Enhancement | Description | Difficulty |
+|-------------|-------------|------------|
+| **Liftie API** | Real-time lift status (open/closed/hold) | Easy |
+| **Trail grooming reports** | Which trails were groomed overnight | Medium |
+| **Webcam integration** | Visual conditions verification | Medium |
+| **Snow report scraping** | Official resort-reported conditions | Medium |
+
+### Snow Quality Inference
+
+Currently we use raw weather data. Could infer surface conditions from patterns:
+
+| Weather Pattern | Inferred Quality |
+|-----------------|------------------|
+| Fresh snow + stayed cold | Powder |
+| Rain → overnight freeze | Icy/crusty |
+| Warm afternoon (>35°F) | Slushy/spring |
+| Cold + wind + no new snow | Hardpack/wind-affected |
+| Prolonged cold, no precip | Machine groomed, firm |
+
+### Smarter Crowd Prediction
+
+Current: Holiday/vacation week detection only.
+
+Future possibilities:
+- Historical lift line wait times
+- Parking lot camera analysis
+- Real-time traffic data on access roads
+- Weather-based demand modeling (powder days = crowds)
+
+### User Personalization
+
+- Save user preferences (home location, pass type, skill level)
+- Learn from feedback on recommendations
+- "I went to X and it was great/terrible" → adjust scoring
+
+### Regional Expansion
+
+Currently: Northeast US (31 mountains)
+
+Could expand to:
+- Colorado Front Range / Summit County
+- Utah (Park City, Salt Lake resorts)
+- Lake Tahoe
+- Pacific Northwest
+
+### Agent Improvements
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-day planning** | "Best 3-day ski trip next week" |
+| **Group optimization** | Balance different skill levels in party |
+| **Budget awareness** | Factor in lift ticket prices, gas costs |
+| **Alternative activities** | "If skiing is bad, what else nearby?" |

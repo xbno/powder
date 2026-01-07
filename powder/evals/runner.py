@@ -27,7 +27,7 @@ from powder.evals.end_to_end import (
     calculate_reasoning_keywords,
     compute_aggregate_metrics,
 )
-from powder.evals.backtest import mock_weather_api, mock_routing_api, run_react_with_mocks
+from powder.evals.backtest import mock_weather_api, mock_routing_api, run_react_with_mocks, load_fixture
 from powder.pipeline import SkiPipeline
 from powder.signatures import (
     ParseSkiQuery,
@@ -111,8 +111,11 @@ def run_end_to_end_eval(
         print(f"\n  [{example.id}] {example.query[:50]}...")
 
         try:
+            # Load conditions from fixtures by date
+            conditions = load_fixture(example.query_date.isoformat())
+
             # Run pipeline with mocked APIs for reproducibility
-            with mock_weather_api(example.conditions_snapshot), mock_routing_api():
+            with mock_weather_api(conditions), mock_routing_api():
                 result = pipeline(
                     query=example.query,
                     current_date=example.query_date,
@@ -216,12 +219,15 @@ def run_react_eval(
         print(f"\n  [{example.id}] {example.query[:50]}...")
 
         try:
+            # Load conditions from fixtures by date
+            conditions = load_fixture(example.query_date.isoformat())
+
             # Run ReAct agent with mocked APIs
             result = run_react_with_mocks(
                 query=example.query,
                 query_date=example.query_date,
                 user_location=example.user_location,
-                conditions=example.conditions_snapshot,
+                conditions=conditions,
             )
 
             recommendation = result["recommendation"]
