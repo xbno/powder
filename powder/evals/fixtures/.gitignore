@@ -1,0 +1,2 @@
+# Ignore fetched weather data (large files, can be regenerated)
+*.json

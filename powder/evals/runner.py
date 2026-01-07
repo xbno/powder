@@ -20,7 +20,6 @@ from powder.evals.end_to_end import (
     EXAMPLES as E2E_EXAMPLES,
     EndToEndExample,
     EvalResult,
-    MockConditions,
     calculate_hit_at_1,
     calculate_hit_at_3,
     calculate_constraint_satisfaction,
@@ -28,6 +27,7 @@ from powder.evals.end_to_end import (
     calculate_reasoning_keywords,
     compute_aggregate_metrics,
 )
+from powder.evals.backtest import mock_weather_api, mock_routing_api
 from powder.pipeline import SkiPipeline
 from powder.signatures import (
     ParseSkiQuery,
@@ -111,8 +111,8 @@ def run_end_to_end_eval(
         print(f"\n  [{example.id}] {example.query[:50]}...")
 
         try:
-            # Run pipeline with mocked conditions for reproducibility
-            with MockConditions(example.conditions_snapshot):
+            # Run pipeline with mocked APIs for reproducibility
+            with mock_weather_api(example.conditions_snapshot), mock_routing_api():
                 result = pipeline(
                     query=example.query,
                     current_date=example.query_date,

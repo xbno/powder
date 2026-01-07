@@ -117,6 +117,21 @@ ifeq ($(wildcard $(PYTHON)),)
 endif
 	$(PYTHON) -m powder.evals.runner --verbose
 
+# Fetch historic weather data for backtesting
+fetch-historic:
+ifeq ($(wildcard $(PYTHON)),)
+	$(error "$(PYTHON) not found. Run 'make venv' first.")
+endif
+	@echo "Fetching historic weather data (takes ~2 minutes)..."
+	$(PYTHON) -m powder.evals.fetch_historic
+
+# Show available backtest scenarios
+backtest-summary:
+ifeq ($(wildcard $(PYTHON)),)
+	$(error "$(PYTHON) not found. Run 'make venv' first.")
+endif
+	$(PYTHON) -m powder.evals.fetch_historic --summary
+
 # Seed the database
 seed-db:
 ifeq ($(wildcard $(PYTHON)),)
@@ -142,7 +157,9 @@ help:
 	@echo "  make test-cov     - Run all tests with coverage"
 	@echo ""
 	@echo "Running:"
-	@echo "  make run          - Run the agent interactively"
-	@echo "  make eval         - Run evaluation suite"
-	@echo "  make eval-verbose - Run evaluation with detailed output"
-	@echo "  make seed-db      - Seed the mountain database"
+	@echo "  make run            - Run the agent interactively"
+	@echo "  make eval           - Run evaluation suite"
+	@echo "  make eval-verbose   - Run evaluation with detailed output"
+	@echo "  make fetch-historic - Fetch historic weather for backtesting"
+	@echo "  make backtest-summary - Show available backtest scenarios"
+	@echo "  make seed-db        - Seed the mountain database"

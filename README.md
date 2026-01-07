@@ -23,10 +23,11 @@ The agent parses natural language queries to extract:
 
 ### Mountains Covered
 
-13 Northeast US mountains with full metadata:
+21+ Northeast US mountains with full metadata:
 
 - **Vermont**: Stowe, Killington, Sugarbush, Jay Peak, Okemo, Mount Snow, Stratton, Mad River Glen, Smugglers' Notch
-- **New Hampshire**: Waterville Valley, Gunstock, Attitash, Bretton Woods
+- **New Hampshire**: Waterville Valley, Gunstock, Attitash, Bretton Woods, Cannon Mountain, Cranmore, Loon Mountain, Mount Sunapee, Wildcat Mountain
+- **Maine**: Saddleback, Sugarloaf
 - **Massachusetts**: Nashoba Valley
 
 Each mountain includes: coordinates, vertical drop, trail counts, terrain percentages, terrain parks, glades, pass types (Epic/Ikon/Indy), lift types, snowmaking %, learning facilities, pricing.
@@ -59,6 +60,21 @@ make test     # Run tests (fast, no API calls)
 ```
 
 Requires [uv](https://github.com/astral-sh/uv) for package management.
+
+### Adding More Mountains
+
+Use the seed script to add mountains from the predefined list via Claude:
+
+```bash
+# List mountains not yet in the database
+python scripts/seed_missing_mountains.py
+
+# Add N mountains using Claude to research and populate data
+python scripts/seed_missing_mountains.py --run --num 10
+
+# After adding mountains, re-fetch historic weather data
+make fetch-historic
+```
 
 Add API keys to `.env`:
 
@@ -116,6 +132,26 @@ make eval-verbose   # Show detailed output for failures
 # With specific model
 .venv/bin/python -m powder.evals.runner --model anthropic/claude-sonnet-4-20250514
 ```
+
+### Historic Weather Data (Backtesting)
+
+Fetch real weather data from the 2024-2025 ski season for reproducible backtesting:
+
+```bash
+# Fetch full season (Dec 1 - Apr 15, all mountains × 136 days)
+make fetch-historic
+
+# Fetch specific date range
+.venv/bin/python -m powder.evals.fetch_historic --start 2025-01-01 --end 2025-01-31
+
+# View summary of fetched data (best powder days, coldest days, etc.)
+make backtest-summary
+```
+
+This creates fixtures in `powder/evals/fixtures/` that can be used for:
+- Creating eval examples from real historic conditions
+- Reproducible backtesting without API calls
+- Analyzing which days the agent would have recommended correctly
 
 ## Testing
 
