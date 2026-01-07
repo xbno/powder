@@ -1,0 +1,38 @@
+{
+  "traces": [],
+  "train": [],
+  "demos": [],
+  "signature": {
+    "instructions": "Assess overall ski conditions across all candidates for the target date.\n\nCreates shared context for scoring - prevents redundant per-mountain reasoning.\n\nBE HARSH. Skiing in bad conditions is miserable and not worth the time/money.\n\nDay quality calibration:\n- stay_home: Dangerous cold (<0°F), rain, ice storms, or zero fresh snow with icy base\n- poor: Brutal cold (0-10°F) with <2\" fresh snow, or warm (>40°F) with no fresh snow\n- fair: Cold but skiable (10-25°F) with some fresh snow (2-4\"), or decent base conditions\n- good: Good temps (15-32°F) with meaningful fresh snow (4-8\") or excellent groomed conditions\n- excellent: Prime temps (18-28°F) with significant fresh snow (8\"+) and low wind\n\nKey factors that DOWNGRADE a day:\n- Sub-10°F temps make skiing miserable (exposed skin, frozen gear, short sessions)\n- <2\" fresh snow means you're skiing yesterday's conditions\n- High winds (>25mph) close upper terrain and make lifts brutal\n- Rain or temps >40°F destroy snow quality rapidly\n\nCRITICAL CONSTRAINTS on day_quality output:\n- Only valid outputs are: ['fair', 'poor', 'good', 'excellent']\n- \"stay_home\" is NOT a valid day_quality value\n- If conditions are truly bad/unrideable, use 'poor' instead of 'stay_home'\n- 'poor' is harsh enough to communicate \"don't go\" while maintaining valid output format\n\nTemperature interpretation:\n- 38-40°F with zero fresh snow = poor (slushy, waterlogged conditions, base deteriorating)\n- Cold temps alone without fresh snow may still warrant 'poor' or 'fair' depending on base quality\n- Warm temps (>40°F) with no fresh snow is especially bad because it's actively destroying the base\n\nRanking logic:\n- Always identify best_available mountain by comparing fresh snow depth, temperature, and wind conditions\n- Fresh snow depth is the primary differentiator when available\n- Wind is a secondary but critical factor - high winds (>25mph) can override good snow amounts\n- For powder-focused users, heavily weight fresh snow and wind conditions\n- For casual users, temperature comfort and groomed conditions matter more\n\nContext narrative should:\n- Explain the day's overall character and why you chose that day_quality rating\n- Call out specific hazards or limitations (wind closing terrain, temps destroying snow, etc.)\n- Address how conditions match user preferences/skill level\n- Give clear guidance on whether this is a \"go\" day or skip day\n- Mention if some mountains are playable while others aren't due to specific conditions",
+    "fields": [
+      {
+        "prefix": "All Candidates:",
+        "description": "JSON of all candidates with conditions"
+      },
+      {
+        "prefix": "User Preferences:",
+        "description": "Parsed preferences from query"
+      },
+      {
+        "prefix": "Day Quality:",
+        "description": "excellent/good/fair/poor/stay_home - BE HARSH, don't sugarcoat bad days"
+      },
+      {
+        "prefix": "Best Available:",
+        "description": "Key fact: e.g. 'Stowe has 15\" fresh, everyone else <5\"' - or 'Nothing good, best is X with only Y'"
+      },
+      {
+        "prefix": "Day Context:",
+        "description": "Notable factors: wind, temp, visibility patterns. Call out if temps are dangerously cold or conditions are poor everywhere."
+      }
+    ]
+  },
+  "lm": null,
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.10",
+      "dspy": "3.1.0",
+      "cloudpickle": "3.1"
+    }
+  }
+}

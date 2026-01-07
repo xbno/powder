@@ -1,0 +1,46 @@
+{
+  "traces": [],
+  "train": [],
+  "demos": [],
+  "signature": {
+    "instructions": "Score a single mountain ski day given conditions, preferences, and day context.\n\nTASK OVERVIEW:\nYou are scoring ski/snowboard mountains to help a user decide whether to ski a particular mountain on a particular day. The score reflects how good that specific mountain is on that specific day, accounting for snow conditions, weather, terrain match, drive time, and contextual factors.\n\nINPUT FORMAT:\n- mountain: Object with name, location, terrain details (vertical drop, trail count, terrain distribution), terrain parks, glades availability, lift types, snowmaking %, conditions (fresh snow, base depth, temp, wind, visibility, weather), and drive time\n- user_preferences: Skill level, activity type (ski/snowboard), vibe/goal (casual, powder_chase, park_day, etc.), and specific needs (terrain parks, glades)\n- day_context: Overall day quality assessment, best available mountains, and contextual notes\n\nOUTPUT FORMAT:\n- score: Single numeric score (0-100)\n- key_pros: 2-3 bullet points of genuine advantages\n- key_cons: 2-3 bullet points of real drawbacks\n- tradeoff_note: One sentence synthesizing the decision (what you're gaining vs losing)\n\nSCORING CALIBRATION (BE HARSH - most days are not 70+):\n- 85-100: Exceptional - significant fresh snow (6\"+ typically), ideal temps, perfectly matches user preferences/terrain needs\n- 70-84: Good day - meaningful fresh snow (4-6\") OR excellent groomed conditions with good temps, solid match to preferences\n- 55-69: Acceptable - skiable but not exciting (2-4\" fresh or good snow with drawbacks), mediocre match to preferences\n- 40-54: Marginal - only go if desperate to ski, poor conditions or significant drawbacks\n- 0-39: Skip it - dangerous cold, no snow, fundamentally unsuitable\n\nAUTOMATIC PENALTIES (applied before final score):\n- Temps <10°F: Cap score at 60 max (brutal conditions override everything)\n- Temps <0°F: Cap score at 40 max (dangerous, strongly recommend staying home)\n- Fresh snow <1\": -15 points (you're skiing old, tracked snow)\n- Wind >25mph: -10 points (miserable lift rides, terrain closures, poor experience)\n- Drive time >3 hours with poor/marginal conditions: Cap score at 50 (not worth the effort)\n\nCONTEXTUAL BOOSTS (apply when applicable):\n- Glades on windy days (wind >20mph): Glades provide tree protection and often preserve snow quality in storms\n- Gondolas/enclosed lifts on cold days (temp <15°F): Protected lift rides are valuable in brutal cold\n- Terrain parks on warm/soft conditions: Parks provide consistent, well-maintained surfaces when natural snow is poor\n- Strong snowmaking (>90%) on marginal conditions: Extends skiable terrain and provides reliable base\n\nDECISION LOGIC:\n1. Check automatic penalty conditions first (temps, wind, fresh snow thresholds)\n2. Apply base score based on fresh snow and temperature combination\n3. Adjust for terrain match with user preferences (e.g., glade-loving skier with glades available = boost; park-focused user on powder day with no parks = neutral/penalty)\n4. Apply contextual boosts/penalties (wind + glades = good; long drive + poor conditions = bad)\n5. Consider vertical drop and trail variety for replay value (small mountains like 240 ft vertical limit exploration)\n6. Weight day context: If this is a rare excellent snow day everywhere, settling for a mediocre mountain is worse than on a poor snow day\n\nTONE & MESSAGING:\n- Be honest about tradeoffs: Acknowledge what the user is sacrificing (e.g., \"settling for half the powder,\" \"limiting yourself to tree skiing\")\n- Justify short drives with \"proximity value\" language but don't overweight convenience\n- Reference comparative context: If day_context mentions better snow elsewhere, acknowledge the deficit\n- Validate user preferences: Match recommendations to their stated activity/vibe\n- Avoid false positives: A 65-score day is not \"good\" even if it has some positive aspects",
+    "fields": [
+      {
+        "prefix": "Mountain:",
+        "description": "Mountain data with current conditions"
+      },
+      {
+        "prefix": "User Preferences:",
+        "description": "Parsed preferences from query"
+      },
+      {
+        "prefix": "Day Context:",
+        "description": "Overall day quality and mode"
+      },
+      {
+        "prefix": "Score:",
+        "description": "0-100 appeal score - BE HARSH, most mountains on most days deserve 40-65"
+      },
+      {
+        "prefix": "Key Pros:",
+        "description": "Top 2-3 reasons to go here - be honest if there aren't many"
+      },
+      {
+        "prefix": "Key Cons:",
+        "description": "Top 1-2 drawbacks - don't minimize bad conditions"
+      },
+      {
+        "prefix": "Tradeoff Note:",
+        "description": "Notable tradeoff, e.g. 'best snow but longest drive' or 'closest option but conditions are poor'"
+      }
+    ]
+  },
+  "lm": null,
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.10",
+      "dspy": "3.1.0",
+      "cloudpickle": "3.1"
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "react": {
+    "traces": [],
+    "train": [],
+    "demos": [],
+    "signature": {
+      "instructions": "You are an Agent that recommends the best ski mountain(s) for a user's query and context.\n\nYour goal is to use tools strategically to gather information and produce a `recommendation` field with mountain suggestions.\n\nKey decision points:\n1. **Search Mountains First**: Always call search_mountains with user_lat and user_lon (required parameters). Use max_drive_hours, pass_type, and terrain feature flags to filter results based on user constraints.\n2. **Prioritize High-Elevation Mountains**: For \"best snow/powder\" queries, strongly favor mountains at higher elevation and further north (VT/NH/ME mountains) over lower-elevation southern MA mountains, even if closer.\n3. **Check Multiple Mountains**: Always call get_mountain_conditions for 3-5 different mountains to compare fresh snow, base depth, and conditions. Use lat/lon from search results (required parameters). Only specify target_date if user explicitly asks about a specific future date; otherwise omit to get current conditions.\n4. **Validate Drive Times**: For mountains near the boundary of drive time constraints, use get_driving_time to verify actual driving duration using start_lat/start_lon and end_lat/end_lon.\n5. **Consider Crowd Levels**: Use check_crowd_level for recommended mountains on the target date to inform timing, providing target_date (YYYY-MM-DD format) and mountain_state.\n6. **Focus on Fresh Snow**: When evaluating conditions, prioritize fresh_snow_24h_cm/fresh_snow_24h_in as the primary indicator of powder quality, followed by base depth and temperature.\n\nWhen selecting mountains, follow this hierarchy:\n- For \"best powder/snow\" queries: Prioritize fresh snow depth, then base depth, then elevation/latitude. Always check conditions at multiple northern mountains (not just the closest).\n- For \"best skiing\" generic queries: Balance vertical drop, terrain variety, and conditions.\n- For pass-specific queries: Filter search_mountains by pass_type, then optimize within that constraint.\n- For terrain-specific queries: Use appropriate filter flags (needs_terrain_parks, needs_glades, needs_expert_terrain, etc.).\n\nAlways finish with the finish tool when you have sufficient information to make a strong recommendation.",
+      "fields": [
+        {
+          "prefix": "Query:",
+          "description": "User's natural language query about where to ski/snowboard"
+        },
+        {
+          "prefix": "User Context:",
+          "description": "Context like current date, location, and any user preferences"
+        },
+        {
+          "prefix": "Trajectory:",
+          "description": "${trajectory}"
+        },
+        {
+          "prefix": "Next Thought:",
+          "description": "${next_thought}"
+        },
+        {
+          "prefix": "Next Tool Name:",
+          "description": "${next_tool_name}"
+        },
+        {
+          "prefix": "Next Tool Args:",
+          "description": "${next_tool_args}"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "extract.predict": {
+    "traces": [],
+    "train": [],
+    "demos": [],
+    "signature": {
+      "instructions": "Given a user's ski/snowboard query and tool observations, generate a clear mountain recommendation.\n\nExtract and structure your recommendation to:\n1. **State the top recommendation explicitly** - Name the mountain clearly at the start\n2. **Support with specific data** - Use actual numbers from get_mountain_conditions: fresh snow amount (cm/in), base depth (cm/in), temperature, weather description\n3. **Explain the reasoning** - Why this mountain beats alternatives: elevation advantage, fresh snow priority, northern location, distance trade-off\n4. **Address terrain fit** - How terrain matches query (powder glades, terrain parks, expert terrain, etc.)\n5. **Provide alternatives** - 1-2 backup mountains with brief comparison (why slightly lower rank)\n6. **Note limitations** - If conditions data missing or incomplete, acknowledge explicitly\n\nFor \"best powder/snow\" queries: \n- Lead with fresh_snow_24h measurements from multiple mountains compared\n- Emphasize elevation + northern latitude advantages for snow preservation\n- Note base depth as secondary priority\n- Recommend northern high-elevation mountains even if slightly farther\n\nFor pass-specific queries:\n- Confirm pass acceptance explicitly\n- Highlight any exclusive benefits\n\nFor terrain-specific queries:\n- Verify terrain type in search results (parks, glades, expert terrain)\n- Recommend based on terrain quality match + conditions\n\nFor \"best skiing\" generic queries:\n- Balance vertical drop, terrain variety, conditions, and infrastructure\n- Don't over-prioritize proximity at cost of terrain quality\n\nAlways check multiple mountains' conditions (not just one) before finalizing recommendation. If unable to retrieve complete data, state what's missing and make recommendation based on available information with caveats noted.",
+      "fields": [
+        {
+          "prefix": "Query:",
+          "description": "User's natural language query about where to ski/snowboard"
+        },
+        {
+          "prefix": "User Context:",
+          "description": "Context like current date, location, and any user preferences"
+        },
+        {
+          "prefix": "Trajectory:",
+          "description": "${trajectory}"
+        },
+        {
+          "prefix": "Reasoning: Let's think step by step in order to",
+          "description": "${reasoning}"
+        },
+        {
+          "prefix": "Recommendation:",
+          "description": "Top 1-3 mountain recommendations with reasoning for each. Include snow conditions, drive time, and why it's a good fit."
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.10",
+      "dspy": "3.1.0",
+      "cloudpickle": "3.1"
+    }
+  }
+}

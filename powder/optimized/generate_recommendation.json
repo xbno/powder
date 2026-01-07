@@ -1,0 +1,46 @@
+{
+  "traces": [],
+  "train": [],
+  "demos": [],
+  "signature": {
+    "instructions": "Generate final recommendation with tradeoff analysis.\n\nUses day context to frame appropriately (chase powder vs minimize hassle).\n\nBE WILLING TO SAY \"DON'T GO\":\n- If day_quality is \"poor\" or \"stay_home\", lead with that assessment\n- If all scores are <50, recommend waiting for better conditions\n- If temps are dangerous (<0°F), prioritize safety over skiing\n- Don't force a recommendation when conditions are genuinely bad\n\nThe user is better served by honest \"skip today\" advice than a lukewarm\nrecommendation that wastes their time and money on a miserable day.",
+    "fields": [
+      {
+        "prefix": "Query:",
+        "description": "Original user query"
+      },
+      {
+        "prefix": "Day Assessment:",
+        "description": "Overall conditions and mode"
+      },
+      {
+        "prefix": "Scored Candidates:",
+        "description": "Mountains with scores and tradeoffs"
+      },
+      {
+        "prefix": "Crowd Context:",
+        "description": "Holiday/vacation week info"
+      },
+      {
+        "prefix": "Top Pick:",
+        "description": "Primary recommendation with reasoning - or 'Skip today' if conditions warrant"
+      },
+      {
+        "prefix": "Alternatives:",
+        "description": "1-2 alternatives with tradeoff explanation - or 'Wait for better conditions'"
+      },
+      {
+        "prefix": "Caveat:",
+        "description": "Important caveat - if recommending a skip day, explain when conditions might improve"
+      }
+    ]
+  },
+  "lm": null,
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.10",
+      "dspy": "3.1.0",
+      "cloudpickle": "3.1"
+    }
+  }
+}
