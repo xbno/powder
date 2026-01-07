@@ -150,13 +150,15 @@ def mock_weather_api(conditions: dict[str, dict]) -> Generator[None, None, None]
     """
     Context manager that mocks the weather API with fixture data.
 
-    Patches at all import locations to ensure mocking works.
+    Patches at all import locations to ensure mocking works for both
+    Pipeline and ReAct agent.
     """
     mock_fn = make_mock_conditions(conditions)
 
     # Patch at all locations where get_conditions might be imported
     with patch("powder.pipeline.get_conditions", mock_fn), \
-         patch("powder.tools.weather.get_conditions", mock_fn):
+         patch("powder.tools.weather.get_conditions", mock_fn), \
+         patch("powder.agent.get_conditions", mock_fn):
         yield
 
 
@@ -181,7 +183,8 @@ def mock_routing_api() -> Generator[None, None, None]:
         }
 
     with patch("powder.pipeline.get_drive_time", mock_get_drive_time), \
-         patch("powder.tools.routing.get_drive_time", mock_get_drive_time):
+         patch("powder.tools.routing.get_drive_time", mock_get_drive_time), \
+         patch("powder.agent.get_drive_time", mock_get_drive_time):
         yield
 
 
@@ -219,6 +222,40 @@ def run_pipeline_with_mocks(
         "parsed": result.parsed,
         "candidates": result.candidates,
         "scores": result.scores,
+    }
+
+
+def run_react_with_mocks(
+    query: str,
+    query_date: date,
+    user_location: dict,
+    conditions: dict[str, dict],
+) -> dict:
+    """
+    Run the ReAct agent with mocked APIs.
+
+    Args:
+        query: User query string
+        query_date: Date for the query
+        user_location: Dict with 'name', 'lat', 'lon'
+        conditions: Dict mapping mountain name -> conditions
+
+    Returns:
+        Dict with recommendation string and extracted info
+    """
+    from powder.agent import recommend
+
+    with mock_weather_api(conditions), mock_routing_api():
+        recommendation = recommend(
+            query=query,
+            current_date=query_date,
+            current_location=user_location,
+        )
+
+    return {
+        "recommendation": recommendation,
+        # ReAct returns unstructured text, so we extract what we can
+        "top_pick": recommendation,  # Full text, will be parsed by eval
     }
 
 

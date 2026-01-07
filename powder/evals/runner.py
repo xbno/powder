@@ -27,7 +27,7 @@ from powder.evals.end_to_end import (
     calculate_reasoning_keywords,
     compute_aggregate_metrics,
 )
-from powder.evals.backtest import mock_weather_api, mock_routing_api
+from powder.evals.backtest import mock_weather_api, mock_routing_api, run_react_with_mocks
 from powder.pipeline import SkiPipeline
 from powder.signatures import (
     ParseSkiQuery,
@@ -195,12 +195,128 @@ def run_end_to_end_eval(
     }
 
 
-def run_all_evals(model: str = "anthropic/claude-haiku-4-5-20251001", verbose: bool = False) -> dict:
+def run_react_eval(
+    examples: list[EndToEndExample],
+    verbose: bool = False,
+) -> dict:
+    """
+    Run end-to-end ReAct agent evaluation.
+
+    This tests the ReAct agent against the same labeled examples as Pipeline.
+    Note: ReAct returns unstructured text, so Hit@1/Hit@3 checks for mountain
+    name mentions in the recommendation string.
+    """
+    print(f"\n{'=' * 60}")
+    print("Evaluating: End-to-End ReAct Agent")
+    print(f"{'=' * 60}")
+
+    results = []
+
+    for example in examples:
+        print(f"\n  [{example.id}] {example.query[:50]}...")
+
+        try:
+            # Run ReAct agent with mocked APIs
+            result = run_react_with_mocks(
+                query=example.query,
+                query_date=example.query_date,
+                user_location=example.user_location,
+                conditions=example.conditions_snapshot,
+            )
+
+            recommendation = result["recommendation"]
+
+            # For ReAct, we check if expected mountains are mentioned in response
+            # since it returns unstructured text
+            hit_1 = calculate_hit_at_1(example, recommendation)
+
+            # For Hit@3, check if any expected mountains are mentioned
+            # (ReAct doesn't give us an ordered list, so we check mentions)
+            hit_3 = any(
+                mtn.lower() in recommendation.lower()
+                for mtn in example.expected_in_top_3
+            ) if example.expected_in_top_3 else hit_1
+
+            # Constraint check - verify pass type and other filters are respected
+            constraints = calculate_constraint_satisfaction(example, recommendation, [])
+
+            exclusion = calculate_exclusion_check(example, recommendation)
+            reasoning = calculate_reasoning_keywords(example, recommendation)
+
+            eval_result = EvalResult(
+                example_id=example.id,
+                hit_at_1=hit_1,
+                hit_at_3=hit_3,
+                constraint_satisfaction=constraints,
+                exclusion_check=exclusion,
+                reasoning_score=reasoning,
+                predicted_top_pick=recommendation[:100] if recommendation else "",
+                predicted_top_3=[],  # ReAct doesn't give ordered list
+            )
+            results.append(eval_result)
+
+            # Print result
+            status = "✓" if hit_1 else "✗"
+            print(f"    Hit@1: {status} | Hit@3: {'✓' if hit_3 else '✗'} | "
+                  f"Constraints: {sum(constraints.values())}/{len(constraints) or 1}")
+
+            if verbose or not hit_1:
+                print(f"    Response: {recommendation[:80]}...")
+                print(f"    Expected: {example.expected_top_pick}")
+
+        except Exception as e:
+            print(f"    ERROR: {e}")
+            import traceback
+            if verbose:
+                traceback.print_exc()
+            results.append(EvalResult(
+                example_id=example.id,
+                hit_at_1=False,
+                hit_at_3=False,
+                constraint_satisfaction={},
+                exclusion_check=False,
+                reasoning_score=0.0,
+                predicted_top_pick=f"ERROR: {e}",
+                predicted_top_3=[],
+            ))
+
+    # Compute aggregates
+    metrics = compute_aggregate_metrics(results)
+
+    print(f"\n  Summary: {metrics}")
+
+    return {
+        "name": "End-to-End ReAct",
+        "metrics": metrics.to_dict(),
+        "detailed_results": [
+            {
+                "id": r.example_id,
+                "hit_at_1": r.hit_at_1,
+                "hit_at_3": r.hit_at_3,
+                "constraints": r.constraint_satisfaction,
+                "predicted": r.predicted_top_pick[:50],
+            }
+            for r in results
+        ],
+    }
+
+
+def run_all_evals(
+    model: str = "anthropic/claude-haiku-4-5-20251001",
+    verbose: bool = False,
+    mode: str = "pipeline",
+) -> dict:
     """
     Run all evaluations and return comprehensive results.
+
+    Args:
+        model: LLM model to use
+        verbose: Show detailed output
+        mode: "pipeline", "react", or "both"
     """
     print(f"\n🎿 Powder Evaluation Suite")
     print(f"Model: {model}")
+    print(f"Mode: {mode}")
     print(f"Time: {datetime.now().isoformat()}")
 
     # Configure DSPy
@@ -208,9 +324,11 @@ def run_all_evals(model: str = "anthropic/claude-haiku-4-5-20251001", verbose: b
 
     results = {
         "model": model,
+        "mode": mode,
         "timestamp": datetime.now().isoformat(),
         "signatures": {},
-        "end_to_end": None,
+        "end_to_end_pipeline": None,
+        "end_to_end_react": None,
     }
 
     # 1. ParseSkiQuery
@@ -254,8 +372,14 @@ def run_all_evals(model: str = "anthropic/claude-haiku-4-5-20251001", verbose: b
     results["signatures"]["GenerateRecommendation"] = gen_result
 
     # 5. End-to-End Pipeline
-    e2e_result = run_end_to_end_eval(E2E_EXAMPLES, verbose=verbose)
-    results["end_to_end"] = e2e_result
+    if mode in ("pipeline", "both"):
+        e2e_pipeline = run_end_to_end_eval(E2E_EXAMPLES, verbose=verbose)
+        results["end_to_end_pipeline"] = e2e_pipeline
+
+    # 6. End-to-End ReAct
+    if mode in ("react", "both"):
+        e2e_react = run_react_eval(E2E_EXAMPLES, verbose=verbose)
+        results["end_to_end_react"] = e2e_react
 
     # Summary
     print(f"\n{'=' * 60}")
@@ -267,13 +391,32 @@ def run_all_evals(model: str = "anthropic/claude-haiku-4-5-20251001", verbose: b
         bar = "█" * int(data["avg_score"] * 20)
         print(f"  {name:25} {data['avg_score']:5.1%} {bar}")
 
-    if results["end_to_end"]:
-        print("\nEnd-to-End Metrics:")
-        e2e = results["end_to_end"]["metrics"]
+    if results["end_to_end_pipeline"]:
+        print("\nEnd-to-End Pipeline Metrics:")
+        e2e = results["end_to_end_pipeline"]["metrics"]
         print(f"  Hit@1:                   {e2e['hit_at_1']}")
         print(f"  Hit@3:                   {e2e['hit_at_3']}")
         print(f"  Constraint Satisfaction: {e2e['constraint_satisfaction']}")
         print(f"  Exclusion Check:         {e2e['exclusion_check']}")
+
+    if results["end_to_end_react"]:
+        print("\nEnd-to-End ReAct Metrics:")
+        e2e = results["end_to_end_react"]["metrics"]
+        print(f"  Hit@1:                   {e2e['hit_at_1']}")
+        print(f"  Hit@3:                   {e2e['hit_at_3']}")
+        print(f"  Constraint Satisfaction: {e2e['constraint_satisfaction']}")
+        print(f"  Exclusion Check:         {e2e['exclusion_check']}")
+
+    # Comparison if both ran
+    if results["end_to_end_pipeline"] and results["end_to_end_react"]:
+        print("\n--- Pipeline vs ReAct Comparison ---")
+        p = results["end_to_end_pipeline"]["metrics"]
+        r = results["end_to_end_react"]["metrics"]
+        print(f"  {'Metric':<25} {'Pipeline':>10} {'ReAct':>10}")
+        print(f"  {'-'*45}")
+        print(f"  {'Hit@1':<25} {p['hit_at_1']:>10} {r['hit_at_1']:>10}")
+        print(f"  {'Hit@3':<25} {p['hit_at_3']:>10} {r['hit_at_3']:>10}")
+        print(f"  {'Constraint Satisfaction':<25} {p['constraint_satisfaction']:>10} {r['constraint_satisfaction']:>10}")
 
     return results
 
@@ -310,6 +453,12 @@ def main():
         help="Output path for results JSON",
     )
     parser.add_argument(
+        "--mode",
+        choices=["pipeline", "react", "both"],
+        default="pipeline",
+        help="Which end-to-end agent to evaluate (default: pipeline)",
+    )
+    parser.add_argument(
         "--signatures-only",
         action="store_true",
         help="Only run signature evals, skip end-to-end",
@@ -323,7 +472,7 @@ def main():
         print("Error: ANTHROPIC_API_KEY environment variable not set")
         sys.exit(1)
 
-    results = run_all_evals(model=args.model, verbose=args.verbose)
+    results = run_all_evals(model=args.model, verbose=args.verbose, mode=args.mode)
 
     if args.output:
         save_results(results, args.output)
