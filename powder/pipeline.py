@@ -38,17 +38,49 @@ class SkiPipeline(dspy.Module):
     - Easier debugging and evaluation
     """
 
-    def __init__(self, db_path: Path | None = None):
+    def __init__(self, db_path: Path | None = None, use_optimized: bool = True):
         super().__init__()
 
-        # Initialize predictors for each signature
-        self.parse_query = dspy.Predict(ParseSkiQuery)
-        self.assess_conditions = dspy.Predict(AssessConditions)
-        self.score_mountain = dspy.Predict(ScoreMountain)
-        self.generate_recommendation = dspy.Predict(GenerateRecommendation)
+        # Path to optimized modules
+        optimized_dir = Path(__file__).parent / "optimized"
+
+        # Initialize predictors - use optimized if available
+        self.parse_query = self._load_or_create(
+            optimized_dir / "parse_query.json",
+            ParseSkiQuery,
+            use_optimized,
+        )
+        self.assess_conditions = self._load_or_create(
+            optimized_dir / "assess_conditions.json",
+            AssessConditions,
+            use_optimized,
+        )
+        self.score_mountain = self._load_or_create(
+            optimized_dir / "score_mountain.json",
+            ScoreMountain,
+            use_optimized,
+        )
+        self.generate_recommendation = self._load_or_create(
+            optimized_dir / "generate_recommendation.json",
+            GenerateRecommendation,
+            use_optimized,
+        )
 
         # Database path
         self.db_path = db_path or Path(__file__).parent / "data" / "mountains.db"
+
+    def _load_or_create(
+        self,
+        optimized_path: Path,
+        signature_class,
+        use_optimized: bool,
+    ) -> dspy.Predict:
+        """Load optimized module if available, otherwise create base predictor."""
+        if use_optimized and optimized_path.exists():
+            predictor = dspy.Predict(signature_class)
+            predictor.load(optimized_path)
+            return predictor
+        return dspy.Predict(signature_class)
 
     def _resolve_date(self, target_date: str, current_date: date) -> date:
         """Resolve target_date string to actual date."""
@@ -261,6 +293,7 @@ def recommend(
     query: str,
     current_date: date | None = None,
     user_location: dict | None = None,
+    use_optimized: bool = True,
 ) -> dict:
     """
     Get ski recommendations using the explicit pipeline.
@@ -269,11 +302,12 @@ def recommend(
         query: Natural language query
         current_date: Override current date
         user_location: Override location dict
+        use_optimized: Whether to use GEPA-optimized prompts (default: True)
 
     Returns:
         Dict with top_pick, alternatives, caveat
     """
-    pipeline = SkiPipeline()
+    pipeline = SkiPipeline(use_optimized=use_optimized)
     result = pipeline(query, current_date, user_location)
 
     return {
