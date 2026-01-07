@@ -29,8 +29,6 @@ attrs==25.4.0
     #   aiohttp
     #   jsonschema
     #   referencing
-backoff==2.2.1
-    # via dspy
 backports-asyncio-runner==1.2.0
     # via pytest-asyncio
 cachetools==6.2.4
@@ -62,9 +60,7 @@ diskcache==5.6.3
     # via dspy
 distro==1.9.0
     # via openai
-dspy==3.0.4
-    # via dspy-ai
-dspy-ai==3.0.4
+dspy @ git+https://github.com/stanfordnlp/dspy.git@fd93c38ca0548beaf512d6e4c3506c04d291cdb4
     # via -r requirements.in
 exceptiongroup==1.3.1
     # via
@@ -87,7 +83,7 @@ geographiclib==2.1
     # via geopy
 geopy==2.4.1
     # via -r requirements.in
-gepa==0.0.17
+gepa==0.0.24
     # via dspy
 grpcio==1.67.1
     # via litellm
@@ -125,8 +121,6 @@ jinja2==3.1.6
     # via litellm
 jiter==0.12.0
     # via openai
-joblib==1.5.3
-    # via dspy
 json-repair==0.55.0
     # via dspy
 jsonschema==4.25.1
@@ -143,8 +137,6 @@ litellm==1.80.11
     # via dspy
 loguru==0.7.3
     # via -r requirements.in
-magicattr==0.1.6
-    # via dspy
 mako==1.3.10
     # via alembic
 markdown-it-py==4.0.0
@@ -193,8 +185,6 @@ parso==0.8.5
     # via jedi
 pexpect==4.9.0
     # via ipython
-pillow==12.1.0
-    # via dspy
 platformdirs==4.5.1
     # via jupyter-core
 pluggy==1.6.0
@@ -267,9 +257,7 @@ requests==2.32.5
     #   openrouteservice
     #   tiktoken
 rich==14.2.0
-    # via
-    #   -r requirements.in
-    #   dspy
+    # via -r requirements.in
 rpds-py==0.30.0
     # via
     #   jsonschema

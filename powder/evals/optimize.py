@@ -21,8 +21,8 @@ import dspy
 from dspy import GEPA
 from dspy.teleprompt.gepa.gepa import ScoreWithFeedback
 
-from powder.signatures import ParseSkiQuery, ParsedQuery, ScoreMountain, AssessConditions
-from powder.evals import parse_query, score_mountain, assess_conditions, generate_recommendation
+from powder.signatures import ParseSkiQuery, ParsedQuery, ScoreMountain, AssessConditions, SkiRecommendation
+from powder.evals import parse_query, score_mountain, assess_conditions, generate_recommendation, end_to_end
 
 # Default models (can be overridden via env vars)
 DEFAULT_BASE_LM = "anthropic/claude-haiku-4-5-20251001"
@@ -406,9 +406,9 @@ def main():
     parser = argparse.ArgumentParser(description="Run GEPA optimization")
     parser.add_argument(
         "--signature",
-        choices=["parse_query", "score_mountain", "assess_conditions", "all"],
+        choices=["parse_query", "score_mountain", "assess_conditions", "react", "all"],
         default="parse_query",
-        help="Which signature to optimize",
+        help="Which signature to optimize (react is slow - runs full agent)",
     )
     parser.add_argument(
         "--max-calls",
@@ -445,6 +445,154 @@ def main():
             max_calls=args.max_calls,
             output_dir=args.output_dir,
         )
+
+    if args.signature == "react":
+        optimize_react(
+            max_calls=args.max_calls,
+            output_dir=args.output_dir,
+        )
+
+
+def optimize_react(
+    max_calls: int = 30,
+    output_dir: Path = None,
+):
+    """
+    Optimize ReAct agent's SkiRecommendation signature with GEPA.
+
+    Note: This is expensive as each eval runs the full ReAct agent with tool calls.
+    """
+    print("\n" + "=" * 60)
+    print("Optimizing: ReAct (SkiRecommendation)")
+    print("=" * 60)
+
+    # Get LMs from env vars or defaults
+    base_lm = os.environ.get("POWDER_BASE_LM", DEFAULT_BASE_LM)
+    reflection_lm = os.environ.get("POWDER_REFLECTION_LM", DEFAULT_REFLECTION_LM)
+
+    print(f"Base LM: {base_lm}")
+    print(f"Reflection LM: {reflection_lm}")
+    print("WARNING: This is slow - each eval runs full ReAct with tool calls")
+
+    # Configure DSPy
+    dspy.configure(lm=dspy.LM(base_lm))
+
+    # Import agent tools
+    from powder.agent import (
+        search_mountains,
+        get_mountain_conditions,
+        get_driving_time,
+        check_crowd_level,
+        build_user_context,
+    )
+
+    # Create ReAct agent
+    tools = [
+        dspy.Tool(search_mountains),
+        dspy.Tool(get_mountain_conditions),
+        dspy.Tool(get_driving_time),
+        dspy.Tool(check_crowd_level),
+    ]
+    student = dspy.ReAct(signature=SkiRecommendation, tools=tools, max_iters=8)
+
+    # Build trainset from end-to-end examples
+    trainset = []
+    for ex in end_to_end.EXAMPLES[:6]:  # Use first 6 for speed
+        user_context = build_user_context(ex.query_date, ex.user_location)
+        trainset.append(
+            dspy.Example(
+                query=ex.query,
+                user_context=user_context,
+                # Store metadata for metric
+                _expected_top_pick=ex.expected_top_pick,
+                _constraints=ex.constraints,
+            ).with_inputs("query", "user_context")
+        )
+
+    print(f"Training examples: {len(trainset)}")
+
+    # Create GEPA metric
+    def gepa_metric(gold, pred, trace=None, pred_name=None, pred_trace=None):
+        recommendation = getattr(pred, "recommendation", "")
+
+        # Check Hit@1
+        hit = any(
+            mtn.lower() in recommendation.lower()
+            for mtn in gold._expected_top_pick
+        )
+
+        # Simple scoring: 1.0 for hit, 0.0 for miss
+        score = 1.0 if hit else 0.0
+
+        if hit:
+            feedback = f"Correct! Recommended one of {gold._expected_top_pick}"
+        else:
+            feedback = f"Missed. Expected one of {gold._expected_top_pick}, got: {recommendation[:100]}..."
+
+        return ScoreWithFeedback(score=score, feedback=feedback)
+
+    # Run GEPA with tool optimization enabled for ReAct
+    print(f"\nRunning GEPA (max_metric_calls={max_calls}, enable_tool_optimization=True)...")
+    optimizer = GEPA(
+        metric=gepa_metric,
+        max_metric_calls=max_calls,
+        track_stats=True,
+        reflection_lm=dspy.LM(reflection_lm, temperature=1.0),
+        enable_tool_optimization=True,  # Enable tool usage optimization for ReAct
+    )
+
+    optimized = optimizer.compile(
+        student,
+        trainset=trainset,
+    )
+
+    # Save optimized module
+    if output_dir is None:
+        output_dir = Path(__file__).parent.parent / "optimized"
+    output_dir.mkdir(exist_ok=True)
+
+    output_path = output_dir / "react_agent.json"
+    optimized.save(output_path)
+    print(f"\nSaved optimized module to: {output_path}")
+
+    # Evaluate improvement
+    print("\n--- Evaluation ---")
+    base_score = 0
+    opt_score = 0
+
+    base_student = dspy.ReAct(signature=SkiRecommendation, tools=tools, max_iters=8)
+
+    for ex in trainset:
+        # Base
+        try:
+            base_pred = base_student(query=ex.query, user_context=ex.user_context)
+            base_hit = any(
+                mtn.lower() in base_pred.recommendation.lower()
+                for mtn in ex._expected_top_pick
+            )
+            base_score += 1.0 if base_hit else 0.0
+        except Exception as e:
+            print(f"Base error: {e}")
+
+        # Optimized
+        try:
+            opt_pred = optimized(query=ex.query, user_context=ex.user_context)
+            opt_hit = any(
+                mtn.lower() in opt_pred.recommendation.lower()
+                for mtn in ex._expected_top_pick
+            )
+            opt_score += 1.0 if opt_hit else 0.0
+        except Exception as e:
+            print(f"Optimized error: {e}")
+
+    base_avg = base_score / len(trainset)
+    opt_avg = opt_score / len(trainset)
+
+    print(f"Baseline:  {base_avg:.1%}")
+    print(f"Optimized: {opt_avg:.1%}")
+    print(f"Change:    {(opt_avg - base_avg):+.1%}")
+
+    return optimized
 
 
 if __name__ == "__main__":

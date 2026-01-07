@@ -1,5 +1,5 @@
 # Core
-dspy-ai
+dspy @ git+https://github.com/stanfordnlp/dspy.git@main # for gepa enable_tool_optimization=True support
 python-dotenv
 pydantic
 
