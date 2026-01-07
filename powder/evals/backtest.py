@@ -230,6 +230,7 @@ def run_react_with_mocks(
     query_date: date,
     user_location: dict,
     conditions: dict[str, dict],
+    use_optimized: bool = True,
 ) -> dict:
     """
     Run the ReAct agent with mocked APIs.
@@ -239,18 +240,43 @@ def run_react_with_mocks(
         query_date: Date for the query
         user_location: Dict with 'name', 'lat', 'lon'
         conditions: Dict mapping mountain name -> conditions
+        use_optimized: Whether to load GEPA-optimized ReAct module
 
     Returns:
         Dict with recommendation string and extracted info
     """
-    from powder.agent import recommend
+    import dspy
+    from powder.agent import (
+        search_mountains,
+        get_mountain_conditions,
+        get_driving_time,
+        check_crowd_level,
+        build_user_context,
+    )
+    from powder.signatures import SkiRecommendation
+
+    # Create tools
+    tools = [
+        dspy.Tool(search_mountains),
+        dspy.Tool(get_mountain_conditions),
+        dspy.Tool(get_driving_time),
+        dspy.Tool(check_crowd_level),
+    ]
+
+    # Create ReAct agent
+    agent = dspy.ReAct(signature=SkiRecommendation, tools=tools, max_iters=8)
+
+    # Load optimized module if available
+    optimized_path = Path(__file__).parent.parent / "optimized" / "react_agent.json"
+    if use_optimized and optimized_path.exists():
+        agent.load(optimized_path)
+
+    # Build user context
+    user_context = build_user_context(query_date, user_location)
 
     with mock_weather_api(conditions), mock_routing_api():
-        recommendation = recommend(
-            query=query,
-            current_date=query_date,
-            current_location=user_location,
-        )
+        result = agent(query=query, user_context=user_context)
+        recommendation = result.recommendation
 
     return {
         "recommendation": recommendation,
