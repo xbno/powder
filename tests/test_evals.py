@@ -19,12 +19,12 @@ class TestParseQueryEval:
 
     def test_dataset_loads(self):
         """Eval dataset loads without errors."""
-        examples = parse_query.get_trainset()
+        examples = parse_query.get_trainset() + parse_query.get_valset()
         assert len(examples) >= 10  # At least 10 examples
 
     def test_examples_have_required_fields(self):
         """Each example has query and user_context inputs."""
-        for ex in parse_query.EXAMPLES:
+        for ex in parse_query.TRAIN_EXAMPLES + parse_query.VAL_EXAMPLES:
             assert hasattr(ex, "query")
             assert hasattr(ex, "user_context")
 
@@ -80,7 +80,7 @@ class TestScoreMountainEval:
 
     def test_examples_have_json_inputs(self):
         """Each example has valid JSON inputs."""
-        for ex in score_mountain.EXAMPLES:
+        for ex in score_mountain.TRAIN_EXAMPLES:
             # Should be valid JSON
             mountain = json.loads(ex.mountain)
             prefs = json.loads(ex.user_preferences)
@@ -146,7 +146,7 @@ class TestAssessConditionsEval:
 
     def test_dataset_loads(self):
         """Eval dataset loads without errors."""
-        examples = assess_conditions.get_trainset()
+        examples = assess_conditions.get_trainset() + assess_conditions.get_valset()
         assert len(examples) >= 4
 
     def test_metric_checks_validity(self):
@@ -164,7 +164,9 @@ class TestAssessConditionsEval:
             day_context = "No context"
 
         valid_score = assess_conditions.assess_conditions_metric(example, ValidPred())
-        invalid_score = assess_conditions.assess_conditions_metric(example, InvalidPred())
+        invalid_score = assess_conditions.assess_conditions_metric(
+            example, InvalidPred()
+        )
 
         assert valid_score > invalid_score
 
@@ -179,7 +181,7 @@ class TestEndToEndEval:
 
     def test_examples_have_required_fields(self):
         """Each example has required fields for evaluation."""
-        for ex in end_to_end.EXAMPLES:
+        for ex in end_to_end.TRAIN_EXAMPLES:
             assert ex.id
             assert ex.query
             assert ex.query_date
@@ -192,7 +194,7 @@ class TestEndToEndEval:
     def test_hit_at_1_calculation(self):
         """Hit@1 correctly identifies matches."""
         # powder_ikon_feb17 - expected_top_pick=["Sugarloaf"]
-        example = end_to_end.EXAMPLES[0]
+        example = end_to_end.TRAIN_EXAMPLES[0]
 
         # Matching prediction
         assert end_to_end.calculate_hit_at_1(example, "Sugarloaf is the best choice")
@@ -204,15 +206,17 @@ class TestEndToEndEval:
     def test_hit_at_3_calculation(self):
         """Hit@3 correctly checks top 3 list."""
         # powder_ikon_feb17 - expected_in_top_3=["Sugarloaf", "Sugarbush", "Killington"]
-        example = end_to_end.EXAMPLES[0]
+        example = end_to_end.TRAIN_EXAMPLES[0]
 
         assert end_to_end.calculate_hit_at_3(example, ["Sugarloaf", "Stowe", "Okemo"])
         assert end_to_end.calculate_hit_at_3(example, ["Stowe", "Sugarbush", "Okemo"])
-        assert not end_to_end.calculate_hit_at_3(example, ["Stowe", "Okemo", "Mount Snow"])
+        assert not end_to_end.calculate_hit_at_3(
+            example, ["Stowe", "Okemo", "Mount Snow"]
+        )
 
     def test_constraint_satisfaction(self):
         """Constraint satisfaction correctly validates pass type."""
-        example = end_to_end.EXAMPLES[0]  # Has pass_type: ikon constraint
+        example = end_to_end.TRAIN_EXAMPLES[0]  # Has pass_type: ikon constraint
 
         candidates = [
             {"name": "Jay Peak", "pass_types": "ikon"},
@@ -236,9 +240,15 @@ class TestEndToEndEval:
         from powder.evals.end_to_end import EvalResult, compute_aggregate_metrics
 
         results = [
-            EvalResult("ex1", True, True, {"pass": True}, True, 1.0, "Jay Peak", ["Jay Peak"]),
-            EvalResult("ex2", False, True, {"pass": True}, True, 0.5, "Stowe", ["Stowe"]),
-            EvalResult("ex3", True, True, {"pass": False}, False, 0.8, "Jay Peak", ["Jay Peak"]),
+            EvalResult(
+                "ex1", True, True, {"pass": True}, True, 1.0, "Jay Peak", ["Jay Peak"]
+            ),
+            EvalResult(
+                "ex2", False, True, {"pass": True}, True, 0.5, "Stowe", ["Stowe"]
+            ),
+            EvalResult(
+                "ex3", True, True, {"pass": False}, False, 0.8, "Jay Peak", ["Jay Peak"]
+            ),
         ]
 
         metrics = compute_aggregate_metrics(results)
@@ -253,7 +263,9 @@ class TestEvalDatasetCoverage:
 
     def test_parse_query_covers_all_filters(self):
         """ParseSkiQuery dataset tests all filter types."""
-        all_queries = " ".join(ex.query for ex in parse_query.EXAMPLES)
+        all_queries = " ".join(
+            ex.query for ex in parse_query.TRAIN_EXAMPLES + parse_query.VAL_EXAMPLES
+        )
 
         # Should have examples for each filter type
         assert "ikon" in all_queries.lower() or "epic" in all_queries.lower()
@@ -265,7 +277,7 @@ class TestEvalDatasetCoverage:
     def test_end_to_end_covers_pass_types(self):
         """E2E dataset tests major pass types."""
         pass_types = set()
-        for ex in end_to_end.EXAMPLES:
+        for ex in end_to_end.TRAIN_EXAMPLES + end_to_end.VAL_EXAMPLES:
             if "pass_type" in ex.constraints:
                 pass_types.add(ex.constraints["pass_type"])
 
@@ -276,7 +288,7 @@ class TestEvalDatasetCoverage:
     def test_end_to_end_covers_user_locations(self):
         """E2E dataset tests multiple user locations."""
         locations = set()
-        for ex in end_to_end.EXAMPLES:
+        for ex in end_to_end.TRAIN_EXAMPLES + end_to_end.VAL_EXAMPLES:
             locations.add(ex.user_location["name"])
 
         assert len(locations) >= 2  # At least Boston and NYC

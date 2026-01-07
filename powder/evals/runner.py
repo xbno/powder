@@ -15,9 +15,14 @@ from pathlib import Path
 
 import dspy
 
-from powder.evals import parse_query, score_mountain, generate_recommendation, assess_conditions
+from powder.evals import (
+    parse_query,
+    score_mountain,
+    generate_recommendation,
+    assess_conditions,
+)
 from powder.evals.end_to_end import (
-    EXAMPLES as E2E_EXAMPLES,
+    TRAIN_EXAMPLES as E2E_EXAMPLES,
     EndToEndExample,
     EvalResult,
     calculate_hit_at_1,
@@ -27,7 +32,12 @@ from powder.evals.end_to_end import (
     calculate_reasoning_keywords,
     compute_aggregate_metrics,
 )
-from powder.evals.backtest import mock_weather_api, mock_routing_api, run_react_with_mocks, load_fixture
+from powder.evals.backtest import (
+    mock_weather_api,
+    mock_routing_api,
+    run_react_with_mocks,
+    load_fixture,
+)
 from powder.pipeline import SkiPipeline
 from powder.signatures import (
     ParseSkiQuery,
@@ -79,7 +89,9 @@ def run_signature_eval(
             print(f"  [!] Example {i + 1}: ERROR - {e}")
 
     avg_score = sum(scores) / len(scores) if scores else 0.0
-    print(f"\n  Average: {avg_score:.1%} ({sum(1 for s in scores if s >= 0.8)}/{len(scores)} passed)")
+    print(
+        f"\n  Average: {avg_score:.1%} ({sum(1 for s in scores if s >= 0.8)}/{len(scores)} passed)"
+    )
 
     return {
         "name": name,
@@ -125,7 +137,11 @@ def run_end_to_end_eval(
             # Extract predictions
             top_pick = result.top_pick
             # Get top 3 from scored candidates
-            top_3 = [s["mountain"]["name"] for s in result.scores[:3]] if result.scores else []
+            top_3 = (
+                [s["mountain"]["name"] for s in result.scores[:3]]
+                if result.scores
+                else []
+            )
 
             # Calculate metrics
             hit_1 = calculate_hit_at_1(example, top_pick)
@@ -133,7 +149,9 @@ def run_end_to_end_eval(
 
             # Build candidates list for constraint check
             candidates = [s["mountain"] for s in result.scores] if result.scores else []
-            constraints = calculate_constraint_satisfaction(example, top_pick, candidates)
+            constraints = calculate_constraint_satisfaction(
+                example, top_pick, candidates
+            )
 
             exclusion = calculate_exclusion_check(example, top_pick)
 
@@ -154,8 +172,15 @@ def run_end_to_end_eval(
 
             # Print result
             status = "✓" if hit_1 else "✗"
-            print(f"    Hit@1: {status} | Hit@3: {'✓' if hit_3 else '✗'} | "
-                  f"Constraints: {sum(constraints.values())}/{len(constraints) or 1}")
+            constraint_str = (
+                f"{sum(constraints.values())}/{len(constraints)}"
+                if constraints
+                else "N/A"
+            )
+            print(
+                f"    Hit@1: {status} | Hit@3: {'✓' if hit_3 else '✗'} | "
+                f"Constraints: {constraint_str}"
+            )
 
             if verbose or not hit_1:
                 print(f"    Predicted: {top_pick[:60]}...")
@@ -166,16 +191,18 @@ def run_end_to_end_eval(
 
         except Exception as e:
             print(f"    ERROR: {e}")
-            results.append(EvalResult(
-                example_id=example.id,
-                hit_at_1=False,
-                hit_at_3=False,
-                constraint_satisfaction={},
-                exclusion_check=False,
-                reasoning_score=0.0,
-                predicted_top_pick=f"ERROR: {e}",
-                predicted_top_3=[],
-            ))
+            results.append(
+                EvalResult(
+                    example_id=example.id,
+                    hit_at_1=False,
+                    hit_at_3=False,
+                    constraint_satisfaction={},
+                    exclusion_check=False,
+                    reasoning_score=0.0,
+                    predicted_top_pick=f"ERROR: {e}",
+                    predicted_top_3=[],
+                )
+            )
 
     # Compute aggregates
     metrics = compute_aggregate_metrics(results)
@@ -238,10 +265,14 @@ def run_react_eval(
 
             # For Hit@3, check if any expected mountains are mentioned
             # (ReAct doesn't give us an ordered list, so we check mentions)
-            hit_3 = any(
-                mtn.lower() in recommendation.lower()
-                for mtn in example.expected_in_top_3
-            ) if example.expected_in_top_3 else hit_1
+            hit_3 = (
+                any(
+                    mtn.lower() in recommendation.lower()
+                    for mtn in example.expected_in_top_3
+                )
+                if example.expected_in_top_3
+                else hit_1
+            )
 
             # Constraint check - verify pass type and other filters are respected
             constraints = calculate_constraint_satisfaction(example, recommendation, [])
@@ -263,8 +294,15 @@ def run_react_eval(
 
             # Print result
             status = "✓" if hit_1 else "✗"
-            print(f"    Hit@1: {status} | Hit@3: {'✓' if hit_3 else '✗'} | "
-                  f"Constraints: {sum(constraints.values())}/{len(constraints) or 1}")
+            constraint_str = (
+                f"{sum(constraints.values())}/{len(constraints)}"
+                if constraints
+                else "N/A"
+            )
+            print(
+                f"    Hit@1: {status} | Hit@3: {'✓' if hit_3 else '✗'} | "
+                f"Constraints: {constraint_str}"
+            )
 
             if verbose or not hit_1:
                 print(f"    Response: {recommendation[:80]}...")
@@ -273,18 +311,21 @@ def run_react_eval(
         except Exception as e:
             print(f"    ERROR: {e}")
             import traceback
+
             if verbose:
                 traceback.print_exc()
-            results.append(EvalResult(
-                example_id=example.id,
-                hit_at_1=False,
-                hit_at_3=False,
-                constraint_satisfaction={},
-                exclusion_check=False,
-                reasoning_score=0.0,
-                predicted_top_pick=f"ERROR: {e}",
-                predicted_top_3=[],
-            ))
+            results.append(
+                EvalResult(
+                    example_id=example.id,
+                    hit_at_1=False,
+                    hit_at_3=False,
+                    constraint_satisfaction={},
+                    exclusion_check=False,
+                    reasoning_score=0.0,
+                    predicted_top_pick=f"ERROR: {e}",
+                    predicted_top_3=[],
+                )
+            )
 
     # Compute aggregates
     metrics = compute_aggregate_metrics(results)
@@ -311,6 +352,7 @@ def run_all_evals(
     model: str = "anthropic/claude-haiku-4-5-20251001",
     verbose: bool = False,
     mode: str = "pipeline",
+    example_id: str | None = None,
 ) -> dict:
     """
     Run all evaluations and return comprehensive results.
@@ -319,10 +361,13 @@ def run_all_evals(
         model: LLM model to use
         verbose: Show detailed output
         mode: "pipeline", "react", or "both"
+        example_id: If provided, only run this specific E2E example
     """
     print(f"\n🎿 Powder Evaluation Suite")
     print(f"Model: {model}")
     print(f"Mode: {mode}")
+    if example_id:
+        print(f"Example: {example_id}")
     print(f"Time: {datetime.now().isoformat()}")
 
     # Configure DSPy
@@ -337,54 +382,65 @@ def run_all_evals(
         "end_to_end_react": None,
     }
 
-    # 1. ParseSkiQuery
-    parse_result = run_signature_eval(
-        name="ParseSkiQuery",
-        examples=parse_query.get_trainset(),
-        predictor=dspy.Predict(ParseSkiQuery),
-        metric_fn=parse_query.get_metric(),
-        verbose=verbose,
-    )
-    results["signatures"]["ParseSkiQuery"] = parse_result
+    # Skip signature evals if running single E2E example
+    if not example_id:
+        # 1. ParseSkiQuery
+        parse_result = run_signature_eval(
+            name="ParseSkiQuery",
+            examples=parse_query.get_trainset(),
+            predictor=dspy.Predict(ParseSkiQuery),
+            metric_fn=parse_query.get_metric(),
+            verbose=verbose,
+        )
+        results["signatures"]["ParseSkiQuery"] = parse_result
 
-    # 2. AssessConditions
-    assess_result = run_signature_eval(
-        name="AssessConditions",
-        examples=assess_conditions.get_trainset(),
-        predictor=dspy.Predict(AssessConditions),
-        metric_fn=assess_conditions.get_metric(),
-        verbose=verbose,
-    )
-    results["signatures"]["AssessConditions"] = assess_result
+        # 2. AssessConditions
+        assess_result = run_signature_eval(
+            name="AssessConditions",
+            examples=assess_conditions.get_trainset(),
+            predictor=dspy.Predict(AssessConditions),
+            metric_fn=assess_conditions.get_metric(),
+            verbose=verbose,
+        )
+        results["signatures"]["AssessConditions"] = assess_result
 
-    # 3. ScoreMountain
-    score_result = run_signature_eval(
-        name="ScoreMountain",
-        examples=score_mountain.get_trainset(),
-        predictor=dspy.Predict(ScoreMountain),
-        metric_fn=score_mountain.get_metric(),
-        verbose=verbose,
-    )
-    results["signatures"]["ScoreMountain"] = score_result
+        # 3. ScoreMountain
+        score_result = run_signature_eval(
+            name="ScoreMountain",
+            examples=score_mountain.get_trainset(),
+            predictor=dspy.Predict(ScoreMountain),
+            metric_fn=score_mountain.get_metric(),
+            verbose=verbose,
+        )
+        results["signatures"]["ScoreMountain"] = score_result
 
-    # 4. GenerateRecommendation
-    gen_result = run_signature_eval(
-        name="GenerateRecommendation",
-        examples=generate_recommendation.get_trainset(),
-        predictor=dspy.Predict(GenerateRecommendation),
-        metric_fn=generate_recommendation.get_metric(),
-        verbose=verbose,
-    )
-    results["signatures"]["GenerateRecommendation"] = gen_result
+        # 4. GenerateRecommendation
+        gen_result = run_signature_eval(
+            name="GenerateRecommendation",
+            examples=generate_recommendation.get_trainset(),
+            predictor=dspy.Predict(GenerateRecommendation),
+            metric_fn=generate_recommendation.get_metric(),
+            verbose=verbose,
+        )
+        results["signatures"]["GenerateRecommendation"] = gen_result
+
+    # Filter E2E examples if specific example requested
+    e2e_examples = E2E_EXAMPLES
+    if example_id:
+        e2e_examples = [ex for ex in E2E_EXAMPLES if ex.id == example_id]
+        if not e2e_examples:
+            print(f"\n⚠️  No example found with id: {example_id}")
+            print(f"   Available: {[ex.id for ex in E2E_EXAMPLES]}")
+            return results
 
     # 5. End-to-End Pipeline
     if mode in ("pipeline", "both"):
-        e2e_pipeline = run_end_to_end_eval(E2E_EXAMPLES, verbose=verbose)
+        e2e_pipeline = run_end_to_end_eval(e2e_examples, verbose=verbose)
         results["end_to_end_pipeline"] = e2e_pipeline
 
     # 6. End-to-End ReAct
     if mode in ("react", "both"):
-        e2e_react = run_react_eval(E2E_EXAMPLES, verbose=verbose)
+        e2e_react = run_react_eval(e2e_examples, verbose=verbose)
         results["end_to_end_react"] = e2e_react
 
     # Summary
@@ -392,10 +448,11 @@ def run_all_evals(
     print("EVALUATION SUMMARY")
     print(f"{'=' * 60}")
 
-    print("\nSignature Metrics (avg score):")
-    for name, data in results["signatures"].items():
-        bar = "█" * int(data["avg_score"] * 20)
-        print(f"  {name:25} {data['avg_score']:5.1%} {bar}")
+    if results["signatures"]:
+        print("\nSignature Metrics (avg score):")
+        for name, data in results["signatures"].items():
+            bar = "█" * int(data["avg_score"] * 20)
+            print(f"  {name:25} {data['avg_score']:5.1%} {bar}")
 
     if results["end_to_end_pipeline"]:
         print("\nEnd-to-End Pipeline Metrics:")
@@ -422,7 +479,9 @@ def run_all_evals(
         print(f"  {'-'*45}")
         print(f"  {'Hit@1':<25} {p['hit_at_1']:>10} {r['hit_at_1']:>10}")
         print(f"  {'Hit@3':<25} {p['hit_at_3']:>10} {r['hit_at_3']:>10}")
-        print(f"  {'Constraint Satisfaction':<25} {p['constraint_satisfaction']:>10} {r['constraint_satisfaction']:>10}")
+        print(
+            f"  {'Constraint Satisfaction':<25} {p['constraint_satisfaction']:>10} {r['constraint_satisfaction']:>10}"
+        )
 
     return results
 
@@ -449,12 +508,14 @@ def main():
         help="Model to evaluate (default: claude-haiku)",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Show detailed output for all examples",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
         help="Output path for results JSON",
     )
@@ -469,16 +530,28 @@ def main():
         action="store_true",
         help="Only run signature evals, skip end-to-end",
     )
+    parser.add_argument(
+        "--example",
+        "-e",
+        type=str,
+        help="Run only this specific E2E example by ID (e.g., park_day_jan02)",
+    )
 
     args = parser.parse_args()
 
     # Check for API key
     import os
+
     if not os.environ.get("ANTHROPIC_API_KEY"):
         print("Error: ANTHROPIC_API_KEY environment variable not set")
         sys.exit(1)
 
-    results = run_all_evals(model=args.model, verbose=args.verbose, mode=args.mode)
+    results = run_all_evals(
+        model=args.model,
+        verbose=args.verbose,
+        mode=args.mode,
+        example_id=args.example,
+    )
 
     if args.output:
         save_results(results, args.output)

@@ -21,8 +21,21 @@ import dspy
 from dspy import GEPA
 from dspy.teleprompt.gepa.gepa import ScoreWithFeedback
 
-from powder.signatures import ParseSkiQuery, ParsedQuery, ScoreMountain, AssessConditions, SkiRecommendation
-from powder.evals import parse_query, score_mountain, assess_conditions, generate_recommendation, end_to_end
+from powder.signatures import (
+    ParseSkiQuery,
+    ParsedQuery,
+    ScoreMountain,
+    AssessConditions,
+    GenerateRecommendation,
+    SkiRecommendation,
+)
+from powder.evals import (
+    parse_query,
+    score_mountain,
+    assess_conditions,
+    generate_recommendation,
+    end_to_end,
+)
 
 # Default models (can be overridden via env vars)
 DEFAULT_BASE_LM = "anthropic/claude-haiku-4-5-20251001"
@@ -93,9 +106,11 @@ def optimize_parse_query(
     # Configure DSPy
     dspy.configure(lm=dspy.LM(base_lm))
 
-    # Get training data
+    # Get training and validation data
     trainset = parse_query.get_trainset()
+    valset = parse_query.get_valset()
     print(f"Training examples: {len(trainset)}")
+    print(f"Validation examples: {len(valset)}")
 
     # Create student module
     student = dspy.Predict(ParseSkiQuery)
@@ -115,6 +130,7 @@ def optimize_parse_query(
     optimized = optimizer.compile(
         student,
         trainset=trainset,
+        valset=valset,
     )
 
     # Save optimized module
@@ -126,28 +142,30 @@ def optimize_parse_query(
     optimized.save(output_path)
     print(f"\nSaved optimized module to: {output_path}")
 
-    # Evaluate improvement
+    # Evaluate improvement on train and val sets
     print("\n--- Evaluation ---")
-    base_score = 0
-    opt_score = 0
-
     base_student = dspy.Predict(ParseSkiQuery)
 
-    for ex in trainset:
-        # Base
-        base_pred = base_student(query=ex.query, user_context=ex.user_context)
-        base_score += parse_query.parse_query_metric(ex, base_pred)
+    for split_name, split_data in [("Train", trainset), ("Val", valset)]:
+        base_score = 0
+        opt_score = 0
 
-        # Optimized
-        opt_pred = optimized(query=ex.query, user_context=ex.user_context)
-        opt_score += parse_query.parse_query_metric(ex, opt_pred)
+        for ex in split_data:
+            # Base
+            base_pred = base_student(query=ex.query, user_context=ex.user_context)
+            base_score += parse_query.parse_query_metric(ex, base_pred)
 
-    base_avg = base_score / len(trainset)
-    opt_avg = opt_score / len(trainset)
+            # Optimized
+            opt_pred = optimized(query=ex.query, user_context=ex.user_context)
+            opt_score += parse_query.parse_query_metric(ex, opt_pred)
 
-    print(f"Baseline:  {base_avg:.1%}")
-    print(f"Optimized: {opt_avg:.1%}")
-    print(f"Change:    {(opt_avg - base_avg):+.1%}")
+        base_avg = base_score / len(split_data)
+        opt_avg = opt_score / len(split_data)
+
+        print(f"{split_name} ({len(split_data)} examples):")
+        print(f"  Baseline:  {base_avg:.1%}")
+        print(f"  Optimized: {opt_avg:.1%}")
+        print(f"  Change:    {(opt_avg - base_avg):+.1%}")
 
     return optimized
 
@@ -171,9 +189,11 @@ def optimize_score_mountain(
     # Configure DSPy
     dspy.configure(lm=dspy.LM(base_lm))
 
-    # Get training data
+    # Get training and validation data
     trainset = score_mountain.get_trainset()
+    valset = score_mountain.get_valset()
     print(f"Training examples: {len(trainset)}")
+    print(f"Validation examples: {len(valset)}")
 
     # Create student module
     student = dspy.Predict(ScoreMountain)
@@ -215,7 +235,9 @@ def optimize_score_mountain(
         elif feedback_parts:
             feedback = "Issues: " + "; ".join(feedback_parts)
         else:
-            feedback = f"Score: {base_score:.2f} - check score calibration and reasoning"
+            feedback = (
+                f"Score: {base_score:.2f} - check score calibration and reasoning"
+            )
 
         return ScoreWithFeedback(score=base_score, feedback=feedback)
 
@@ -231,6 +253,7 @@ def optimize_score_mountain(
     optimized = optimizer.compile(
         student,
         trainset=trainset,
+        valset=valset,
     )
 
     # Save optimized module
@@ -242,36 +265,38 @@ def optimize_score_mountain(
     optimized.save(output_path)
     print(f"\nSaved optimized module to: {output_path}")
 
-    # Evaluate improvement
+    # Evaluate improvement on train and val sets
     print("\n--- Evaluation ---")
-    base_score = 0
-    opt_score = 0
-
     base_student = dspy.Predict(ScoreMountain)
 
-    for ex in trainset:
-        # Base
-        base_pred = base_student(
-            mountain=ex.mountain,
-            user_preferences=ex.user_preferences,
-            day_context=ex.day_context,
-        )
-        base_score += score_mountain.score_mountain_metric(ex, base_pred)
+    for split_name, split_data in [("Train", trainset), ("Val", valset)]:
+        base_score = 0
+        opt_score = 0
 
-        # Optimized
-        opt_pred = optimized(
-            mountain=ex.mountain,
-            user_preferences=ex.user_preferences,
-            day_context=ex.day_context,
-        )
-        opt_score += score_mountain.score_mountain_metric(ex, opt_pred)
+        for ex in split_data:
+            # Base
+            base_pred = base_student(
+                mountain=ex.mountain,
+                user_preferences=ex.user_preferences,
+                day_context=ex.day_context,
+            )
+            base_score += score_mountain.score_mountain_metric(ex, base_pred)
 
-    base_avg = base_score / len(trainset)
-    opt_avg = opt_score / len(trainset)
+            # Optimized
+            opt_pred = optimized(
+                mountain=ex.mountain,
+                user_preferences=ex.user_preferences,
+                day_context=ex.day_context,
+            )
+            opt_score += score_mountain.score_mountain_metric(ex, opt_pred)
 
-    print(f"Baseline:  {base_avg:.1%}")
-    print(f"Optimized: {opt_avg:.1%}")
-    print(f"Change:    {(opt_avg - base_avg):+.1%}")
+        base_avg = base_score / len(split_data)
+        opt_avg = opt_score / len(split_data)
+
+        print(f"{split_name} ({len(split_data)} examples):")
+        print(f"  Baseline:  {base_avg:.1%}")
+        print(f"  Optimized: {opt_avg:.1%}")
+        print(f"  Change:    {(opt_avg - base_avg):+.1%}")
 
     return optimized
 
@@ -295,9 +320,11 @@ def optimize_assess_conditions(
     # Configure DSPy
     dspy.configure(lm=dspy.LM(base_lm))
 
-    # Get training data
+    # Get training and validation data
     trainset = assess_conditions.get_trainset()
+    valset = assess_conditions.get_valset()
     print(f"Training examples: {len(trainset)}")
+    print(f"Validation examples: {len(valset)}")
 
     # Create student module
     student = dspy.Predict(AssessConditions)
@@ -311,13 +338,17 @@ def optimize_assess_conditions(
         # Check day_quality validity
         valid_qualities = {"excellent", "good", "fair", "poor", "stay_home"}
         if pred.day_quality.lower().strip() not in valid_qualities:
-            feedback_parts.append(f"day_quality '{pred.day_quality}' is not valid (use: {valid_qualities})")
+            feedback_parts.append(
+                f"day_quality '{pred.day_quality}' is not valid (use: {valid_qualities})"
+            )
 
         # Check expected day quality
         if hasattr(gold, "expected_day_quality"):
             expected = gold.expected_day_quality
             if isinstance(expected, list):
-                if pred.day_quality.lower().strip() not in [e.lower() for e in expected]:
+                if pred.day_quality.lower().strip() not in [
+                    e.lower() for e in expected
+                ]:
                     feedback_parts.append(
                         f"day_quality should be one of {expected} but got '{pred.day_quality}'"
                     )
@@ -330,13 +361,24 @@ def optimize_assess_conditions(
         # Check if wind should be mentioned
         if hasattr(gold, "expected_mention_wind") and gold.expected_mention_wind:
             if "wind" not in pred.day_context.lower():
-                feedback_parts.append("Should mention wind in day_context for windy conditions")
+                feedback_parts.append(
+                    "Should mention wind in day_context for windy conditions"
+                )
 
         # Check if cold should be mentioned
         if hasattr(gold, "expected_mention_cold") and gold.expected_mention_cold:
-            cold_words = ["cold", "frigid", "bitter", "freezing", "temperature", "frostbite"]
+            cold_words = [
+                "cold",
+                "frigid",
+                "bitter",
+                "freezing",
+                "temperature",
+                "frostbite",
+            ]
             if not any(w in pred.day_context.lower() for w in cold_words):
-                feedback_parts.append("Should mention cold/temperature in day_context for bitter cold")
+                feedback_parts.append(
+                    "Should mention cold/temperature in day_context for bitter cold"
+                )
 
         if base_score >= 1.0:
             feedback = "Perfect! Day quality and context are well-calibrated."
@@ -359,6 +401,7 @@ def optimize_assess_conditions(
     optimized = optimizer.compile(
         student,
         trainset=trainset,
+        valset=valset,
     )
 
     # Save optimized module
@@ -370,34 +413,187 @@ def optimize_assess_conditions(
     optimized.save(output_path)
     print(f"\nSaved optimized module to: {output_path}")
 
-    # Evaluate improvement
+    # Evaluate improvement on train and val sets
     print("\n--- Evaluation ---")
-    base_score = 0
-    opt_score = 0
-
     base_student = dspy.Predict(AssessConditions)
 
-    for ex in trainset:
-        # Base
-        base_pred = base_student(
-            all_candidates=ex.all_candidates,
-            user_preferences=ex.user_preferences,
+    for split_name, split_data in [("Train", trainset), ("Val", valset)]:
+        base_score = 0
+        opt_score = 0
+
+        for ex in split_data:
+            # Base
+            base_pred = base_student(
+                all_candidates=ex.all_candidates,
+                user_preferences=ex.user_preferences,
+            )
+            base_score += assess_conditions.assess_conditions_metric(ex, base_pred)
+
+            # Optimized
+            opt_pred = optimized(
+                all_candidates=ex.all_candidates,
+                user_preferences=ex.user_preferences,
+            )
+            opt_score += assess_conditions.assess_conditions_metric(ex, opt_pred)
+
+        base_avg = base_score / len(split_data)
+        opt_avg = opt_score / len(split_data)
+
+        print(f"{split_name} ({len(split_data)} examples):")
+        print(f"  Baseline:  {base_avg:.1%}")
+        print(f"  Optimized: {opt_avg:.1%}")
+        print(f"  Change:    {(opt_avg - base_avg):+.1%}")
+
+    return optimized
+
+
+def optimize_generate_recommendation(
+    max_calls: int = 50,
+    output_dir: Path = None,
+):
+    """Optimize GenerateRecommendation signature with GEPA."""
+    print("\n" + "=" * 60)
+    print("Optimizing: GenerateRecommendation")
+    print("=" * 60)
+
+    # Get LMs from env vars or defaults
+    base_lm = os.environ.get("POWDER_BASE_LM", DEFAULT_BASE_LM)
+    reflection_lm = os.environ.get("POWDER_REFLECTION_LM", DEFAULT_REFLECTION_LM)
+
+    print(f"Base LM: {base_lm}")
+    print(f"Reflection LM: {reflection_lm}")
+
+    # Configure DSPy
+    dspy.configure(lm=dspy.LM(base_lm))
+
+    # Get training and validation data
+    trainset = generate_recommendation.get_trainset()
+    valset = generate_recommendation.get_valset()
+    print(f"Training examples: {len(trainset)}")
+    print(f"Validation examples: {len(valset)}")
+
+    # Create student module
+    student = dspy.Predict(GenerateRecommendation)
+
+    # Create GEPA metric with feedback
+    def gepa_metric(gold, pred, trace=None, pred_name=None, pred_trace=None):
+        base_score = generate_recommendation.generate_recommendation_metric(
+            gold, pred, trace
         )
-        base_score += assess_conditions.assess_conditions_metric(ex, base_pred)
 
-        # Optimized
-        opt_pred = optimized(
-            all_candidates=ex.all_candidates,
-            user_preferences=ex.user_preferences,
-        )
-        opt_score += assess_conditions.assess_conditions_metric(ex, opt_pred)
+        feedback_parts = []
 
-    base_avg = base_score / len(trainset)
-    opt_avg = opt_score / len(trainset)
+        # Check top pick correctness
+        if hasattr(gold, "expected_top_pick"):
+            acceptable = gold.expected_top_pick
+            top_pick_lower = pred.top_pick.lower()
+            if not any(mtn.lower() in top_pick_lower for mtn in acceptable):
+                feedback_parts.append(
+                    f"top_pick should mention one of {acceptable} but got '{pred.top_pick[:50]}...'"
+                )
 
-    print(f"Baseline:  {base_avg:.1%}")
-    print(f"Optimized: {opt_avg:.1%}")
-    print(f"Change:    {(opt_avg - base_avg):+.1%}")
+        # Check alternatives grounding
+        if hasattr(gold, "expected_alternatives_mention"):
+            expected_mtns = gold.expected_alternatives_mention
+            alts_lower = pred.alternatives.lower()
+            missing = [mtn for mtn in expected_mtns if mtn.lower() not in alts_lower]
+            if missing:
+                feedback_parts.append(f"alternatives should mention {missing}")
+
+        # Check caveat keywords
+        if hasattr(gold, "expected_caveat_keywords"):
+            keywords = gold.expected_caveat_keywords
+            full_text = (
+                pred.caveat + " " + pred.top_pick + " " + pred.alternatives
+            ).lower()
+            missing = [kw for kw in keywords if kw.lower() not in full_text]
+            if missing:
+                feedback_parts.append(f"should mention concerns like {missing}")
+
+        # Check pass awareness
+        if hasattr(gold, "expected_pass_awareness") and gold.expected_pass_awareness:
+            full_text = (
+                pred.top_pick + " " + pred.alternatives + " " + pred.caveat
+            ).lower()
+            pass_words = ["pass", "ikon", "epic", "indy", "ticket"]
+            if not any(pw in full_text for pw in pass_words):
+                feedback_parts.append("should mention pass type compatibility")
+
+        if base_score >= 1.0:
+            feedback = (
+                "Perfect! Recommendation correctly prioritizes and explains options."
+            )
+        elif feedback_parts:
+            feedback = "Issues: " + "; ".join(feedback_parts)
+        else:
+            feedback = (
+                f"Score: {base_score:.2f} - check recommendation structure and content"
+            )
+
+        return ScoreWithFeedback(score=base_score, feedback=feedback)
+
+    # Run GEPA
+    print(f"\nRunning GEPA (max_metric_calls={max_calls})...")
+    optimizer = GEPA(
+        metric=gepa_metric,
+        max_metric_calls=max_calls,
+        track_stats=True,
+        reflection_lm=dspy.LM(reflection_lm, temperature=1.0),
+    )
+
+    optimized = optimizer.compile(
+        student,
+        trainset=trainset,
+        valset=valset,
+    )
+
+    # Save optimized module
+    if output_dir is None:
+        output_dir = Path(__file__).parent.parent / "optimized"
+    output_dir.mkdir(exist_ok=True)
+
+    output_path = output_dir / "generate_recommendation.json"
+    optimized.save(output_path)
+    print(f"\nSaved optimized module to: {output_path}")
+
+    # Evaluate improvement on train and val sets
+    print("\n--- Evaluation ---")
+    base_student = dspy.Predict(GenerateRecommendation)
+
+    for split_name, split_data in [("Train", trainset), ("Val", valset)]:
+        base_score = 0
+        opt_score = 0
+
+        for ex in split_data:
+            # Base
+            base_pred = base_student(
+                query=ex.query,
+                day_assessment=ex.day_assessment,
+                scored_candidates=ex.scored_candidates,
+                crowd_context=ex.crowd_context,
+            )
+            base_score += generate_recommendation.generate_recommendation_metric(
+                ex, base_pred
+            )
+
+            # Optimized
+            opt_pred = optimized(
+                query=ex.query,
+                day_assessment=ex.day_assessment,
+                scored_candidates=ex.scored_candidates,
+                crowd_context=ex.crowd_context,
+            )
+            opt_score += generate_recommendation.generate_recommendation_metric(
+                ex, opt_pred
+            )
+
+        base_avg = base_score / len(split_data)
+        opt_avg = opt_score / len(split_data)
+
+        print(f"{split_name} ({len(split_data)} examples):")
+        print(f"  Baseline:  {base_avg:.1%}")
+        print(f"  Optimized: {opt_avg:.1%}")
+        print(f"  Change:    {(opt_avg - base_avg):+.1%}")
 
     return optimized
 
@@ -406,7 +602,14 @@ def main():
     parser = argparse.ArgumentParser(description="Run GEPA optimization")
     parser.add_argument(
         "--signature",
-        choices=["parse_query", "score_mountain", "assess_conditions", "react", "all"],
+        choices=[
+            "parse_query",
+            "score_mountain",
+            "assess_conditions",
+            "generate_recommendation",
+            "react",
+            "all",
+        ],
         default="parse_query",
         help="Which signature to optimize (react is slow - runs full agent)",
     )
@@ -442,6 +645,12 @@ def main():
 
     if args.signature in ("assess_conditions", "all"):
         optimize_assess_conditions(
+            max_calls=args.max_calls,
+            output_dir=args.output_dir,
+        )
+
+    if args.signature in ("generate_recommendation", "all"):
+        optimize_generate_recommendation(
             max_calls=args.max_calls,
             output_dir=args.output_dir,
         )
@@ -495,21 +704,27 @@ def optimize_react(
     ]
     student = dspy.ReAct(signature=SkiRecommendation, tools=tools, max_iters=8)
 
-    # Build trainset from end-to-end examples
-    trainset = []
-    for ex in end_to_end.EXAMPLES[:6]:  # Use first 6 for speed
-        user_context = build_user_context(ex.query_date, ex.user_location)
-        trainset.append(
-            dspy.Example(
-                query=ex.query,
-                user_context=user_context,
-                # Store metadata for metric
-                _expected_top_pick=ex.expected_top_pick,
-                _constraints=ex.constraints,
-            ).with_inputs("query", "user_context")
-        )
+    # Build trainset and valset from end-to-end examples
+    def build_dspy_examples(examples):
+        result = []
+        for ex in examples:
+            user_context = build_user_context(ex.query_date, ex.user_location)
+            result.append(
+                dspy.Example(
+                    query=ex.query,
+                    user_context=user_context,
+                    # Store metadata for metric
+                    _expected_top_pick=ex.expected_top_pick,
+                    _constraints=ex.constraints,
+                ).with_inputs("query", "user_context")
+            )
+        return result
+
+    trainset = build_dspy_examples(end_to_end.get_trainset())
+    valset = build_dspy_examples(end_to_end.get_valset())
 
     print(f"Training examples: {len(trainset)}")
+    print(f"Validation examples: {len(valset)}")
 
     # Create GEPA metric
     def gepa_metric(gold, pred, trace=None, pred_name=None, pred_trace=None):
@@ -517,8 +732,7 @@ def optimize_react(
 
         # Check Hit@1
         hit = any(
-            mtn.lower() in recommendation.lower()
-            for mtn in gold._expected_top_pick
+            mtn.lower() in recommendation.lower() for mtn in gold._expected_top_pick
         )
 
         # Simple scoring: 1.0 for hit, 0.0 for miss
@@ -532,7 +746,9 @@ def optimize_react(
         return ScoreWithFeedback(score=score, feedback=feedback)
 
     # Run GEPA with tool optimization enabled for ReAct
-    print(f"\nRunning GEPA (max_metric_calls={max_calls}, enable_tool_optimization=True)...")
+    print(
+        f"\nRunning GEPA (max_metric_calls={max_calls}, enable_tool_optimization=True)..."
+    )
     optimizer = GEPA(
         metric=gepa_metric,
         max_metric_calls=max_calls,
@@ -544,6 +760,7 @@ def optimize_react(
     optimized = optimizer.compile(
         student,
         trainset=trainset,
+        valset=valset,
     )
 
     # Save optimized module
@@ -555,42 +772,44 @@ def optimize_react(
     optimized.save(output_path)
     print(f"\nSaved optimized module to: {output_path}")
 
-    # Evaluate improvement
+    # Evaluate improvement on train and val sets
     print("\n--- Evaluation ---")
-    base_score = 0
-    opt_score = 0
-
     base_student = dspy.ReAct(signature=SkiRecommendation, tools=tools, max_iters=8)
 
-    for ex in trainset:
-        # Base
-        try:
-            base_pred = base_student(query=ex.query, user_context=ex.user_context)
-            base_hit = any(
-                mtn.lower() in base_pred.recommendation.lower()
-                for mtn in ex._expected_top_pick
-            )
-            base_score += 1.0 if base_hit else 0.0
-        except Exception as e:
-            print(f"Base error: {e}")
+    for split_name, split_data in [("Train", trainset), ("Val", valset)]:
+        base_score = 0
+        opt_score = 0
 
-        # Optimized
-        try:
-            opt_pred = optimized(query=ex.query, user_context=ex.user_context)
-            opt_hit = any(
-                mtn.lower() in opt_pred.recommendation.lower()
-                for mtn in ex._expected_top_pick
-            )
-            opt_score += 1.0 if opt_hit else 0.0
-        except Exception as e:
-            print(f"Optimized error: {e}")
+        for ex in split_data:
+            # Base
+            try:
+                base_pred = base_student(query=ex.query, user_context=ex.user_context)
+                base_hit = any(
+                    mtn.lower() in base_pred.recommendation.lower()
+                    for mtn in ex._expected_top_pick
+                )
+                base_score += 1.0 if base_hit else 0.0
+            except Exception as e:
+                print(f"Base error: {e}")
 
-    base_avg = base_score / len(trainset)
-    opt_avg = opt_score / len(trainset)
+            # Optimized
+            try:
+                opt_pred = optimized(query=ex.query, user_context=ex.user_context)
+                opt_hit = any(
+                    mtn.lower() in opt_pred.recommendation.lower()
+                    for mtn in ex._expected_top_pick
+                )
+                opt_score += 1.0 if opt_hit else 0.0
+            except Exception as e:
+                print(f"Optimized error: {e}")
 
-    print(f"Baseline:  {base_avg:.1%}")
-    print(f"Optimized: {opt_avg:.1%}")
-    print(f"Change:    {(opt_avg - base_avg):+.1%}")
+        base_avg = base_score / len(split_data)
+        opt_avg = opt_score / len(split_data)
+
+        print(f"{split_name} ({len(split_data)} examples):")
+        print(f"  Baseline:  {base_avg:.1%}")
+        print(f"  Optimized: {opt_avg:.1%}")
+        print(f"  Change:    {(opt_avg - base_avg):+.1%}")
 
     return optimized
 

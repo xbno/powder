@@ -37,21 +37,21 @@ POWDER_DAY_CANDIDATES = [
     {
         "mountain": {"name": "Stowe", "state": "VT", "pass_types": "epic"},
         "score": 92,
-        "key_pros": "14\" fresh powder, excellent glades",
+        "key_pros": '14" fresh powder, excellent glades',
         "key_cons": "3+ hour drive",
         "tradeoff_note": "Best snow but longest drive",
     },
     {
         "mountain": {"name": "Sugarbush", "state": "VT", "pass_types": "ikon"},
         "score": 78,
-        "key_pros": "8\" fresh, good terrain variety",
+        "key_pros": '8" fresh, good terrain variety',
         "key_cons": "Less snow than Stowe",
         "tradeoff_note": "Good alternative if you have Ikon",
     },
     {
         "mountain": {"name": "Killington", "state": "VT", "pass_types": "ikon"},
         "score": 72,
-        "key_pros": "6\" fresh, biggest vertical",
+        "key_pros": '6" fresh, biggest vertical',
         "key_cons": "Crowded, less fresh snow",
         "tradeoff_note": "Big mountain but not the powder leader today",
     },
@@ -136,7 +136,7 @@ WEEKEND_CROWDS = {
 
 EXCELLENT_DAY = (
     "Day quality: excellent\n"
-    "Best available: Stowe has 14\" fresh\n"
+    'Best available: Stowe has 14" fresh\n'
     "Context: Cold temps, powder preserved"
 )
 
@@ -148,7 +148,7 @@ POOR_DAY = (
 
 GOOD_DAY = (
     "Day quality: good\n"
-    "Best available: Jay Peak and Sugarbush both have 10\"+ fresh\n"
+    'Best available: Jay Peak and Sugarbush both have 10"+ fresh\n'
     "Context: Multiple solid options today"
 )
 
@@ -176,7 +176,13 @@ ICY_RECOMMENDATION = make_example(
     crowd_context=NORMAL_CROWDS,
     expected={
         "expected_top_pick": ["Killington"],
-        "expected_caveat_keywords": ["icy", "conditions", "rough", "postpone", "tomorrow"],
+        "expected_caveat_keywords": [
+            "icy",
+            "conditions",
+            "rough",
+            "postpone",
+            "tomorrow",
+        ],
         "expected_alternatives_mention": ["Okemo"],
     },
 )
@@ -259,13 +265,15 @@ WEEKEND_TRIP = make_example(
 )
 
 
-EXAMPLES = [
+TRAIN_EXAMPLES = [
     CLEAR_WINNER,
     ICY_RECOMMENDATION,
     CLOSE_TIE,
-    HOLIDAY_WARNING,
     PASS_MISMATCH,
     SHORT_DRIVE,
+]
+VAL_EXAMPLES = [
+    HOLIDAY_WARNING,
     WEEKEND_TRIP,
 ]
 
@@ -318,14 +326,18 @@ def generate_recommendation_metric(
     if hasattr(example, "expected_caveat_keywords"):
         keywords = example.expected_caveat_keywords
         # Check both caveat and top_pick for these concerns
-        full_text = (pred.caveat + " " + pred.top_pick + " " + pred.alternatives).lower()
+        full_text = (
+            pred.caveat + " " + pred.top_pick + " " + pred.alternatives
+        ).lower()
         matches = sum(1 for kw in keywords if kw.lower() in full_text)
         scores.append(1.0 if matches >= 1 else 0.0)
 
     # 5. Pass awareness (special check)
     if hasattr(example, "expected_pass_awareness") and example.expected_pass_awareness:
         # Check if pass type is mentioned in recommendation
-        full_text = (pred.top_pick + " " + pred.alternatives + " " + pred.caveat).lower()
+        full_text = (
+            pred.top_pick + " " + pred.alternatives + " " + pred.caveat
+        ).lower()
         pass_words = ["pass", "ikon", "epic", "indy", "ticket"]
         mentions_pass = any(pw in full_text for pw in pass_words)
         scores.append(1.0 if mentions_pass else 0.0)
@@ -339,8 +351,13 @@ def generate_recommendation_metric(
 
 
 def get_trainset() -> list[dspy.Example]:
-    """Get training examples."""
-    return EXAMPLES
+    """Get training examples (first 5 of 7 = 71%)."""
+    return TRAIN_EXAMPLES
+
+
+def get_valset() -> list[dspy.Example]:
+    """Get validation examples (last 2 of 7 = 29%)."""
+    return VAL_EXAMPLES
 
 
 def get_metric():
@@ -370,7 +387,9 @@ def score_detailed(example: dspy.Example, pred: dspy.Prediction) -> dict:
 
     if hasattr(example, "expected_caveat_keywords"):
         full_text = (pred.caveat + " " + pred.top_pick).lower()
-        found = [kw for kw in example.expected_caveat_keywords if kw.lower() in full_text]
+        found = [
+            kw for kw in example.expected_caveat_keywords if kw.lower() in full_text
+        ]
         details["caveat_check"] = {
             "expected_any": example.expected_caveat_keywords,
             "found": found,
@@ -390,7 +409,7 @@ if __name__ == "__main__":
     print("Testing GenerateRecommendation metric...\n")
 
     total_score = 0.0
-    for i, example in enumerate(EXAMPLES):
+    for i, example in enumerate(TRAIN_EXAMPLES):
         pred = predictor(
             query=example.query,
             day_assessment=example.day_assessment,
@@ -411,4 +430,4 @@ if __name__ == "__main__":
                     print(f"  ❌ {key}: {val}")
         print()
 
-    print(f"Average score: {total_score / len(EXAMPLES):.2%}")
+    print(f"Average score: {total_score / len(TRAIN_EXAMPLES):.2%}")

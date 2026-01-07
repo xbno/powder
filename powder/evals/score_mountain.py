@@ -208,7 +208,7 @@ CASUAL_SKIER = {
 
 POWDER_DAY_CONTEXT = (
     "Day quality: excellent\n"
-    "Best available: Stowe has 14\" fresh, everyone else <5\"\n"
+    'Best available: Stowe has 14" fresh, everyone else <5"\n'
     "Context: Cold temps preserving powder, moderate winds"
 )
 
@@ -220,7 +220,7 @@ ICY_DAY_CONTEXT = (
 
 WINDY_DAY_CONTEXT = (
     "Day quality: good\n"
-    "Best available: Jay Peak has 8\" fresh but very windy\n"
+    'Best available: Jay Peak has 8" fresh but very windy\n'
     "Context: High winds (35mph) may close upper lifts, stick to trees"
 )
 
@@ -300,7 +300,13 @@ OKEMO_FAMILY_DAY = make_example(
     expected={
         "expected_score_min": 75,
         "expected_score_max": 95,
-        "expected_pros_mention": ["family", "learning", "beginner", "green", "magic carpet"],
+        "expected_pros_mention": [
+            "family",
+            "learning",
+            "beginner",
+            "green",
+            "magic carpet",
+        ],
         "expected_cons_mention": ["drive", "price", "crowds"],
     },
 )
@@ -314,7 +320,13 @@ NASHOBA_POWDER_CHASER = make_example(
         "expected_score_min": 20,
         "expected_score_max": 45,
         "expected_pros_mention": ["close", "quick"],
-        "expected_cons_mention": ["small", "limited", "terrain", "no glades", "vertical"],
+        "expected_cons_mention": [
+            "small",
+            "limited",
+            "terrain",
+            "no glades",
+            "vertical",
+        ],
     },
 )
 
@@ -333,15 +345,17 @@ STOWE_IKON_HOLDER = make_example(
 
 
 # All examples
-EXAMPLES = [
+TRAIN_EXAMPLES = [
     STOWE_POWDER_DAY,
     KILLINGTON_ICY_DAY,
     JAY_WINDY_DAY,
-    NASHOBA_CASUAL,
     OKEMO_PARK,
-    OKEMO_FAMILY_DAY,
     NASHOBA_POWDER_CHASER,
     STOWE_IKON_HOLDER,
+]
+VAL_EXAMPLES = [
+    OKEMO_FAMILY_DAY,
+    NASHOBA_CASUAL,
 ]
 
 
@@ -414,8 +428,13 @@ def score_mountain_metric(
 
 
 def get_trainset() -> list[dspy.Example]:
-    """Get training examples."""
-    return EXAMPLES
+    """Get training examples (first 6 of 8 = 75%)."""
+    return TRAIN_EXAMPLES
+
+
+def get_valset() -> list[dspy.Example]:
+    """Get validation examples (last 2 of 8 = 25%)."""
+    return VAL_EXAMPLES
 
 
 def get_metric():
@@ -452,7 +471,11 @@ def score_detailed(example: dspy.Example, pred: dspy.Prediction) -> dict:
 
     # Pros keywords
     if hasattr(example, "expected_pros_mention"):
-        found = [kw for kw in example.expected_pros_mention if kw.lower() in pred.key_pros.lower()]
+        found = [
+            kw
+            for kw in example.expected_pros_mention
+            if kw.lower() in pred.key_pros.lower()
+        ]
         details["pros_grounding"] = {
             "expected_any": example.expected_pros_mention,
             "found": found,
@@ -461,7 +484,11 @@ def score_detailed(example: dspy.Example, pred: dspy.Prediction) -> dict:
 
     # Cons keywords
     if hasattr(example, "expected_cons_mention"):
-        found = [kw for kw in example.expected_cons_mention if kw.lower() in pred.key_cons.lower()]
+        found = [
+            kw
+            for kw in example.expected_cons_mention
+            if kw.lower() in pred.key_cons.lower()
+        ]
         details["cons_grounding"] = {
             "expected_any": example.expected_cons_mention,
             "found": found,
@@ -482,7 +509,7 @@ if __name__ == "__main__":
     print("Testing ScoreMountain metric...\n")
 
     total_score = 0.0
-    for i, example in enumerate(EXAMPLES):
+    for i, example in enumerate(TRAIN_EXAMPLES):
         pred = predictor(
             mountain=example.mountain,
             user_preferences=example.user_preferences,
@@ -501,4 +528,4 @@ if __name__ == "__main__":
             print(f"  Details: {json.dumps(details, indent=4, default=str)[:500]}")
         print()
 
-    print(f"Average score: {total_score / len(EXAMPLES):.2%}")
+    print(f"Average score: {total_score / len(TRAIN_EXAMPLES):.2%}")

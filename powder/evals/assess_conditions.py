@@ -21,7 +21,10 @@ import dspy
 # Each example has inputs (all_candidates, user_preferences)
 # and expected outputs for evaluation
 
-def make_example(candidates: list[dict], preferences: dict, expected: dict) -> dspy.Example:
+
+def make_example(
+    candidates: list[dict], preferences: dict, expected: dict
+) -> dspy.Example:
     """Helper to create a properly structured example."""
     return dspy.Example(
         all_candidates=json.dumps(candidates),
@@ -156,8 +159,8 @@ BITTER_COLD = make_example(
 )
 
 # All examples for training/evaluation
-EXAMPLES = [POWDER_DAY, ICY_DAY, WINDY_DAY, BITTER_COLD]
-
+TRAIN_EXAMPLES = [POWDER_DAY, ICY_DAY, WINDY_DAY]
+VAL_EXAMPLES = [BITTER_COLD]
 
 # --- Metric Function ---
 
@@ -202,7 +205,9 @@ def assess_conditions_metric(example, pred, trace=None) -> float:
 
     # 4. Accuracy: mentions expected best mountain (if provided)
     if hasattr(example, "expected_best_mountain"):
-        mentions_best = example.expected_best_mountain.lower() in pred.best_available.lower()
+        mentions_best = (
+            example.expected_best_mountain.lower() in pred.best_available.lower()
+        )
         scores.append(1.0 if mentions_best else 0.0)
 
     # 5. Consistency: mentions wind if it's windy (if expected)
@@ -212,7 +217,14 @@ def assess_conditions_metric(example, pred, trace=None) -> float:
 
     # 6. Consistency: mentions cold if it's bitter cold (if expected)
     if hasattr(example, "expected_mention_cold") and example.expected_mention_cold:
-        cold_words = ["cold", "frigid", "bitter", "freezing", "temperature", "frostbite"]
+        cold_words = [
+            "cold",
+            "frigid",
+            "bitter",
+            "freezing",
+            "temperature",
+            "frostbite",
+        ]
         mentions_cold = any(w in pred.day_context.lower() for w in cold_words)
         scores.append(1.0 if mentions_cold else 0.0)
 
@@ -222,9 +234,15 @@ def assess_conditions_metric(example, pred, trace=None) -> float:
 
 # --- Convenience functions for optimization ---
 
+
 def get_trainset() -> list[dspy.Example]:
-    """Get training examples."""
-    return EXAMPLES
+    """Get training examples (first 3 of 4 = 75%)."""
+    return TRAIN_EXAMPLES
+
+
+def get_valset() -> list[dspy.Example]:
+    """Get validation examples (last 1 of 4 = 25%)."""
+    return VAL_EXAMPLES
 
 
 def get_metric():
@@ -243,7 +261,7 @@ if __name__ == "__main__":
 
     print("Testing AssessConditions metric...\n")
 
-    for i, example in enumerate(EXAMPLES):
+    for i, example in enumerate(TRAIN_EXAMPLES):
         pred = predictor(
             all_candidates=example.all_candidates,
             user_preferences=example.user_preferences,

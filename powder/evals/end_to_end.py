@@ -60,9 +60,8 @@ ALBANY = {"name": "Albany, NY", "lat": 42.6526, "lon": -73.7562}
 # All examples use real historic weather data from fixtures/by_date.json
 # Dates chosen based on find_interesting_days.py analysis
 
-EXAMPLES = [
+TRAIN_EXAMPLES = [
     # ===== POWDER DAYS (Clear Winners) =====
-
     # 1. Big powder day - Sugarloaf 5.7", huge variance
     # Ikon mountains: Sugarloaf, Sugarbush, Killington, Jay Peak
     EndToEndExample(
@@ -76,20 +75,6 @@ EXAMPLES = [
         constraints={"pass_type": "ikon"},
         reasoning_keywords=["powder", "fresh", "sugarloaf", "5"],
     ),
-
-    # 2. Epic pass powder day - Stowe 5.5" on 2025-03-29
-    EndToEndExample(
-        id="powder_epic_mar29",
-        query="Epic pass, where's the best snow today?",
-        query_date=date(2025, 3, 29),
-        user_location=BOSTON,
-        expected_top_pick=["Stowe"],  # 5.5" fresh, clear winner for Epic
-        expected_in_top_3=["Stowe", "Okemo", "Mount Snow"],
-        expected_excluded=["Sugarloaf", "Killington", "Jay Peak"],  # Ikon
-        constraints={"pass_type": "epic"},
-        reasoning_keywords=["powder", "stowe", "fresh"],
-    ),
-
     # 3. No pass - anyone can go, Sugarloaf wins on pure conditions
     EndToEndExample(
         id="powder_no_pass_jan02",
@@ -97,12 +82,15 @@ EXAMPLES = [
         query_date=date(2025, 1, 2),
         user_location=BOSTON,
         expected_top_pick=["Sugarloaf"],  # 5.6" fresh
-        expected_in_top_3=["Sugarloaf", "Sunday River", "Saddleback"],  # Maine got dumped on
+        expected_in_top_3=[
+            "Sugarloaf",
+            "Sunday River",
+            "Saddleback",
+        ],  # Maine got dumped on
         expected_excluded=[],
         constraints={},
         reasoning_keywords=["powder", "fresh", "maine"],
     ),
-
     # 4. Southern VT powder day - Mount Snow 4.2" on 2024-12-10
     # Tests closer option for Boston users
     EndToEndExample(
@@ -116,9 +104,7 @@ EXAMPLES = [
         constraints={"max_drive_hours": 3.0},
         reasoning_keywords=["snow", "drive", "close"],
     ),
-
     # ===== NYC LOCATION =====
-
     # 5. NYC user - different distance calculations favor Catskills/southern VT
     EndToEndExample(
         id="nyc_powder_mar29",
@@ -128,28 +114,31 @@ EXAMPLES = [
         # Stowe has 5.5" but is far from NYC
         # Hunter/Windham are closer but less snow
         expected_top_pick=["Stowe", "Hunter Mountain", "Killington"],
-        expected_in_top_3=["Stowe", "Hunter Mountain", "Killington", "Windham Mountain"],
+        expected_in_top_3=[
+            "Stowe",
+            "Hunter Mountain",
+            "Killington",
+            "Windham Mountain",
+        ],
         expected_excluded=[],
         constraints={},
         reasoning_keywords=["powder", "fresh", "drive"],
     ),
-
     # ===== TERRAIN-SPECIFIC QUERIES =====
-
     # 6. Terrain park focus - Killington/Okemo have superpipes
     EndToEndExample(
         id="park_day_jan02",
-        query="Best terrain park? I want to hit rails and jumps.",
+        query="I want to hit rails and jumps tomorrow",
         query_date=date(2025, 1, 2),
         user_location=BOSTON,
-        # Killington, Mount Snow, Okemo have best parks
-        expected_top_pick=["Killington", "Mount Snow", "Okemo"],
+        # Holiday crowds and super windy 20mphs most places, rec skip first
+        expected_top_pick=[],
         expected_in_top_3=["Killington", "Mount Snow", "Okemo"],
         expected_excluded=["Mad River Glen"],  # No parks, no snowboarding
         constraints={"needs_terrain_parks": True},
         reasoning_keywords=["park", "terrain", "features"],
+        expect_skip=True,
     ),
-
     # 7. Glade/tree skiing - Jay Peak is famous for this
     EndToEndExample(
         id="glades_ikon_feb17",
@@ -162,7 +151,6 @@ EXAMPLES = [
         constraints={"pass_type": "ikon", "needs_glades": True},
         reasoning_keywords=["glades", "trees", "woods"],
     ),
-
     # 8. Beginner/family day
     EndToEndExample(
         id="beginner_family_jan29",
@@ -171,27 +159,18 @@ EXAMPLES = [
         user_location=BOSTON,
         # Okemo, Smugglers, Bretton Woods have excellent learning areas
         expected_top_pick=["Okemo", "Smugglers' Notch", "Bretton Woods", "Stratton"],
-        expected_in_top_3=["Okemo", "Smugglers' Notch", "Bretton Woods", "Stratton", "Waterville Valley"],
+        expected_in_top_3=[
+            "Okemo",
+            "Smugglers' Notch",
+            "Bretton Woods",
+            "Stratton",
+            "Waterville Valley",
+        ],
         expected_excluded=["Mad River Glen"],  # Basic learning area
         constraints={"needs_beginner_terrain": True},
         reasoning_keywords=["beginner", "learning", "family", "lesson"],
     ),
-
-    # 9. Expert terrain - double blacks
-    EndToEndExample(
-        id="expert_terrain_mar29",
-        query="Want steep chutes and double blacks",
-        query_date=date(2025, 3, 29),
-        user_location=BOSTON,
-        expected_top_pick=["Stowe", "Jay Peak", "Smugglers' Notch", "Killington"],
-        expected_in_top_3=["Stowe", "Jay Peak", "Smugglers' Notch", "Killington", "Sugarbush"],
-        expected_excluded=["Nashoba Valley", "Wachusett Mountain"],  # No expert terrain
-        constraints={"needs_expert_terrain": True},
-        reasoning_keywords=["expert", "steep", "black", "challenging"],
-    ),
-
     # ===== AMBIGUOUS DAYS (Tests tie-breaking) =====
-
     # 10. Ambiguous day - similar conditions everywhere, pick closest
     EndToEndExample(
         id="ambiguous_jan29",
@@ -201,28 +180,18 @@ EXAMPLES = [
         # Low variance (1.6"), cold (5.4°F), Gore has 2.1" best
         # Should recommend based on combination of snow + proximity
         expected_top_pick=["Gore Mountain", "Jiminy Peak", "Killington", "Stowe"],
-        expected_in_top_3=["Gore Mountain", "Jiminy Peak", "Killington", "Stowe", "Sugarbush"],
+        expected_in_top_3=[
+            "Gore Mountain",
+            "Jiminy Peak",
+            "Killington",
+            "Stowe",
+            "Sugarbush",
+        ],
         expected_excluded=[],
         constraints={},
         reasoning_keywords=["conditions", "snow"],
     ),
-
-    # 11. Another ambiguous day - Feb 3, low variance
-    EndToEndExample(
-        id="ambiguous_feb03",
-        query="Best skiing today from Boston?",
-        query_date=date(2025, 2, 3),
-        user_location=BOSTON,
-        # Jiminy 1.7", low variance (1.3"), pleasant 21°F
-        expected_top_pick=["Jiminy Peak", "Berkshire East", "Killington"],
-        expected_in_top_3=["Jiminy Peak", "Berkshire East", "Killington", "Okemo"],
-        expected_excluded=[],
-        constraints={},
-        reasoning_keywords=["conditions"],
-    ),
-
     # ===== SKIP DAYS (Bad conditions - should recommend NOT skiing) =====
-
     # 12. Brutal cold - Jan 8, -8.5°F, minimal snow
     EndToEndExample(
         id="skip_brutal_cold_jan08",
@@ -237,22 +206,6 @@ EXAMPLES = [
         reasoning_keywords=["cold", "dangerous", "skip", "stay home", "not worth"],
         expect_skip=True,
     ),
-
-    # 13. Pre-Christmas ice - Dec 22, -7.2°F, no fresh snow
-    EndToEndExample(
-        id="skip_prexmas_ice_dec22",
-        query="Ikon pass today?",
-        query_date=date(2024, 12, 22),
-        user_location=BOSTON,
-        # -7.2°F, only 0.7" fresh max - icy and cold
-        expected_top_pick=[],
-        expected_in_top_3=[],
-        expected_excluded=[],
-        constraints={"pass_type": "ikon"},
-        reasoning_keywords=["cold", "ice", "skip", "not worth"],
-        expect_skip=True,
-    ),
-
     # 14. Rainy day - Dec 11, widespread rain (weather_code 61)
     EndToEndExample(
         id="skip_rainy_dec11",
@@ -267,7 +220,6 @@ EXAMPLES = [
         reasoning_keywords=["rain", "wet", "skip", "not worth"],
         expect_skip=True,
     ),
-
     # 15. Spring slush - Mar 31, 38-69°F, no fresh snow
     EndToEndExample(
         id="skip_spring_slush_mar31",
@@ -282,7 +234,65 @@ EXAMPLES = [
         reasoning_keywords=["warm", "slush", "melt", "skip", "spring"],
         expect_skip=True,
     ),
-
+]
+VAL_EXAMPLES = [
+    # 2. Epic pass powder day - Stowe 5.5" on 2025-03-29
+    EndToEndExample(
+        id="powder_epic_mar29",
+        query="Epic pass, where's the best snow today?",
+        query_date=date(2025, 3, 29),
+        user_location=BOSTON,
+        expected_top_pick=["Stowe"],  # 5.5" fresh, clear winner for Epic
+        expected_in_top_3=["Stowe", "Okemo", "Mount Snow"],
+        expected_excluded=["Sugarloaf", "Killington", "Jay Peak"],  # Ikon
+        constraints={"pass_type": "epic"},
+        reasoning_keywords=["powder", "stowe", "fresh"],
+    ),
+    # 9. Expert terrain - double blacks
+    EndToEndExample(
+        id="expert_terrain_mar29",
+        query="Want steep chutes and double blacks",
+        query_date=date(2025, 3, 29),
+        user_location=BOSTON,
+        expected_top_pick=["Stowe", "Jay Peak", "Smugglers' Notch", "Killington"],
+        expected_in_top_3=[
+            "Stowe",
+            "Jay Peak",
+            "Smugglers' Notch",
+            "Killington",
+            "Sugarbush",
+        ],
+        expected_excluded=["Nashoba Valley", "Wachusett Mountain"],  # No expert terrain
+        constraints={"needs_expert_terrain": True},
+        reasoning_keywords=["expert", "steep", "black", "challenging"],
+    ),
+    # 11. Another ambiguous day - Feb 3, low variance
+    EndToEndExample(
+        id="ambiguous_feb03",
+        query="Best skiing today from Boston?",
+        query_date=date(2025, 2, 3),
+        user_location=BOSTON,
+        # Jiminy 1.7", low variance (1.3"), pleasant 21°F
+        expected_top_pick=["Jiminy Peak", "Berkshire East", "Killington"],
+        expected_in_top_3=["Jiminy Peak", "Berkshire East", "Killington", "Okemo"],
+        expected_excluded=[],
+        constraints={},
+        reasoning_keywords=["conditions"],
+    ),
+    # 13. Pre-Christmas ice - Dec 22, -7.2°F, no fresh snow
+    EndToEndExample(
+        id="skip_prexmas_ice_dec22",
+        query="Ikon pass today?",
+        query_date=date(2024, 12, 22),
+        user_location=BOSTON,
+        # -7.2°F, only 0.7" fresh max - icy and cold
+        expected_top_pick=[],
+        expected_in_top_3=[],
+        expected_excluded=[],
+        constraints={"pass_type": "ikon"},
+        reasoning_keywords=["cold", "ice", "skip", "not worth"],
+        expect_skip=True,
+    ),
     # 16. Another rainy day - Dec 30, warmer rain
     EndToEndExample(
         id="skip_warm_rain_dec30",
@@ -521,26 +531,38 @@ def compute_aggregate_metrics(results: list[EvalResult]) -> AggregateMetrics:
 
 def get_examples() -> list[EndToEndExample]:
     """Get all evaluation examples."""
-    return EXAMPLES
+    return TRAIN_EXAMPLES + VAL_EXAMPLES
+
+
+def get_trainset() -> list[EndToEndExample]:
+    """Get training examples (first 12 of 16 = 75%)."""
+    return TRAIN_EXAMPLES
+
+
+def get_valset() -> list[EndToEndExample]:
+    """Get validation examples (last 4 of 16 = 25%)."""
+    return VAL_EXAMPLES
 
 
 if __name__ == "__main__":
     # Print dataset summary
     print("End-to-End Evaluation Dataset")
     print("=" * 60)
-    print(f"Total examples: {len(EXAMPLES)}")
+    print(f"Total examples: {len(TRAIN_EXAMPLES)}")
     print()
 
-    skip_count = sum(1 for ex in EXAMPLES if ex.expect_skip)
+    skip_count = sum(1 for ex in TRAIN_EXAMPLES if ex.expect_skip)
     print(f"Skip day examples: {skip_count}")
-    print(f"Regular examples: {len(EXAMPLES) - skip_count}")
+    print(f"Regular examples: {len(TRAIN_EXAMPLES) - skip_count}")
     print()
 
-    for ex in EXAMPLES:
+    for ex in TRAIN_EXAMPLES:
         skip_marker = " [SKIP DAY]" if ex.expect_skip else ""
         print(f"ID: {ex.id}{skip_marker}")
         print(f"  Date: {ex.query_date}")
         print(f"  Query: {ex.query[:50]}...")
-        print(f"  Expected: {ex.expected_top_pick[:3] if ex.expected_top_pick else 'SKIP'}")
+        print(
+            f"  Expected: {ex.expected_top_pick[:3] if ex.expected_top_pick else 'SKIP'}"
+        )
         print(f"  Constraints: {ex.constraints}")
         print()

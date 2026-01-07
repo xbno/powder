@@ -210,26 +210,29 @@ SNOWBOARDER = make_example(
 )
 
 # All examples
-EXAMPLES = [
+TRAIN_EXAMPLES = [
     POWDER_CHASE,
     PARK_DAY,
     BEGINNER_LESSON,
     EXPERT_TERRAIN,
     GLADE_DAY,
-    NIGHT_SKIING,
-    FAMILY_DAY,
     INDY_PASS,
     CASUAL_DAY,
     PARK_AND_GLADES,
     SPECIFIC_DATE,
+]
+VAL_EXAMPLES = [
+    NIGHT_SKIING,
+    FAMILY_DAY,
     SNOWBOARDER,
 ]
-
 
 # --- Metric Function ---
 
 
-def parse_query_metric(example: dspy.Example, pred: dspy.Prediction, trace=None) -> float:
+def parse_query_metric(
+    example: dspy.Example, pred: dspy.Prediction, trace=None
+) -> float:
     """
     Score a ParseSkiQuery prediction with DETERMINISTIC metrics.
 
@@ -324,7 +327,10 @@ def parse_query_metric(example: dspy.Example, pred: dspy.Prediction, trace=None)
             elif expected_str == "today" and actual_str in ["today", "2025-01-15"]:
                 scores.append(1.0)
             # "tomorrow" should resolve correctly
-            elif expected_str == "tomorrow" and actual_str in ["tomorrow", "2025-01-16"]:
+            elif expected_str == "tomorrow" and actual_str in [
+                "tomorrow",
+                "2025-01-16",
+            ]:
                 scores.append(1.0)
             else:
                 scores.append(0.0)
@@ -333,8 +339,13 @@ def parse_query_metric(example: dspy.Example, pred: dspy.Prediction, trace=None)
 
 
 def get_trainset() -> list[dspy.Example]:
-    """Get training examples."""
-    return EXAMPLES
+    """Get training examples (first 9 of 12 = 75%)."""
+    return TRAIN_EXAMPLES
+
+
+def get_valset() -> list[dspy.Example]:
+    """Get validation examples (last 3 of 12 = 25%)."""
+    return VAL_EXAMPLES
 
 
 def get_metric():
@@ -429,7 +440,7 @@ if __name__ == "__main__":
     print("Testing ParseSkiQuery metric...\n")
 
     total_score = 0.0
-    for i, example in enumerate(EXAMPLES):
+    for i, example in enumerate(TRAIN_EXAMPLES):
         pred = predictor(query=example.query, user_context=example.user_context)
         score = parse_query_metric(example, pred)
         total_score += score
@@ -441,7 +452,9 @@ if __name__ == "__main__":
             details = score_detailed(example, pred)
             for field, info in details.items():
                 if info["score"] < 1.0:
-                    print(f"  ❌ {field}: expected={info['expected']}, got={info['actual']}")
+                    print(
+                        f"  ❌ {field}: expected={info['expected']}, got={info['actual']}"
+                    )
         print()
 
-    print(f"Average score: {total_score / len(EXAMPLES):.2%}")
+    print(f"Average score: {total_score / len(TRAIN_EXAMPLES):.2%}")

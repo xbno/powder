@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.notion.so)",
+      "Bash(make test:*)",
+      "WebSearch",
+      "Bash(.venv/bin/python:*)",
+      "WebFetch(domain:openrouteservice.org)",
+      "Bash(cat:*)",
+      "WebFetch(domain:dspy.ai)",
+      "Bash(make seed-db:*)",
+      "WebFetch(domain:www.killington.com)",
+      "Skill(add_mountain)",
+      "Bash(python -m powder.tools.validate_mountain:*)",
+      "WebFetch(domain:skimap.org)",
+      "WebFetch(domain:www.madriverglen.com)",
+      "WebFetch(domain:www.mountsnow.com)",
+      "WebFetch(domain:www.smuggs.com)"
+    ]
+  }
+}
