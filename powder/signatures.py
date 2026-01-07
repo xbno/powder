@@ -1,6 +1,27 @@
 """DSPy signatures for ski recommendation agent."""
 
 import dspy
+from pydantic import BaseModel
+from typing import Literal
+
+
+class ParsedQuery(BaseModel):
+    """Pydantic model for parsed ski query - Optional types handle null coercion."""
+
+    # Hard filters
+    target_date: str
+    max_drive_hours: float | None = None
+    pass_type: Literal["epic", "ikon", "indy"] | None = None
+    needs_terrain_parks: bool = False
+    needs_glades: bool = False
+    needs_beginner_terrain: bool = False
+    needs_expert_terrain: bool = False
+    needs_night_skiing: bool = False
+
+    # Soft preferences
+    skill_level: Literal["beginner", "intermediate", "advanced", "expert"] | None = None
+    activity: Literal["ski", "snowboard", "either"] | None = None
+    vibe: Literal["powder_chase", "casual", "park_day", "learning", "family_day"] | None = None
 
 
 class ParseSkiQuery(dspy.Signature):
@@ -13,32 +34,10 @@ class ParseSkiQuery(dspy.Signature):
     query: str = dspy.InputField()
     user_context: str = dspy.InputField(desc="Current date, location defaults")
 
-    # Hard filters (drive DB query) - flattened from all group members
-    target_date: str = dspy.OutputField(
-        desc="YYYY-MM-DD, 'today', 'tomorrow', or 'unspecified' if no date mentioned"
+    # Output is a structured Pydantic model
+    parsed: ParsedQuery = dspy.OutputField(
+        desc="Structured query with filters and preferences"
     )
-    max_drive_hours: float | None = dspy.OutputField(desc="Max drive time, null if not specified")
-    pass_type: str | None = dspy.OutputField(desc="epic/ikon/indy or null")
-    needs_terrain_parks: bool = dspy.OutputField(
-        desc="True if mentions park, jumps, rails, boxes, halfpipe, pipe, features, freestyle"
-    )
-    needs_glades: bool = dspy.OutputField(
-        desc="True if mentions glades, trees, tree skiing, woods, forest"
-    )
-    needs_beginner_terrain: bool = dspy.OutputField(
-        desc="True if mentions beginner, first-timer, learning, never skied, bunny hill, magic carpet"
-    )
-    needs_expert_terrain: bool = dspy.OutputField(
-        desc="True if mentions double blacks, expert, extreme, steeps, cliffs, chutes"
-    )
-    needs_night_skiing: bool = dspy.OutputField(
-        desc="True if mentions night skiing, evening, after work, lights"
-    )
-
-    # Soft preferences (affect scoring)
-    skill_level: str | None = dspy.OutputField(desc="beginner/intermediate/advanced/expert or null")
-    activity: str | None = dspy.OutputField(desc="ski/snowboard/either or null")
-    vibe: str | None = dspy.OutputField(desc="powder_chase/casual/park_day/learning/family_day or null")
 
 
 class AssessConditions(dspy.Signature):

@@ -244,6 +244,9 @@ def parse_query_metric(example: dspy.Example, pred: dspy.Prediction, trace=None)
     """
     scores = []
 
+    # Access the ParsedQuery Pydantic model
+    parsed = pred.parsed
+
     # --- Boolean field checks (exact match) ---
     bool_fields = [
         "needs_terrain_parks",
@@ -257,8 +260,8 @@ def parse_query_metric(example: dspy.Example, pred: dspy.Prediction, trace=None)
         expected_key = f"expected_{field}"
         if hasattr(example, expected_key):
             expected = getattr(example, expected_key)
-            actual = getattr(pred, field, None)
-            # Handle string "True"/"False" from LLM
+            actual = getattr(parsed, field, None)
+            # Pydantic handles bool coercion, but just in case
             if isinstance(actual, str):
                 actual = actual.lower() == "true"
             scores.append(1.0 if actual == expected else 0.0)
@@ -270,11 +273,12 @@ def parse_query_metric(example: dspy.Example, pred: dspy.Prediction, trace=None)
         expected_key = f"expected_{field}"
         if hasattr(example, expected_key):
             expected = getattr(example, expected_key)
-            actual = getattr(pred, field, None)
+            actual = getattr(parsed, field, None)
 
             if expected is None:
-                scores.append(1.0 if actual is None or actual == "null" else 0.0)
-            elif actual is None or actual == "null":
+                # Pydantic gives us None directly, not "null" string
+                scores.append(1.0 if actual is None else 0.0)
+            elif actual is None:
                 scores.append(0.0)
             else:
                 # Case-insensitive match, handle underscore variants
@@ -285,9 +289,9 @@ def parse_query_metric(example: dspy.Example, pred: dspy.Prediction, trace=None)
     # --- Numeric field checks (with tolerance) ---
     if hasattr(example, "expected_max_drive_hours"):
         expected = example.expected_max_drive_hours
-        actual = pred.max_drive_hours
+        actual = parsed.max_drive_hours
 
-        if actual is None or actual == "null":
+        if actual is None:
             scores.append(0.0)
         else:
             try:
@@ -305,7 +309,7 @@ def parse_query_metric(example: dspy.Example, pred: dspy.Prediction, trace=None)
     # --- Date field checks ---
     if hasattr(example, "expected_target_date"):
         expected = example.expected_target_date
-        actual = pred.target_date
+        actual = parsed.target_date
 
         if actual is None:
             scores.append(0.0)
@@ -348,6 +352,7 @@ def score_detailed(example: dspy.Example, pred: dspy.Prediction) -> dict:
     Returns dict with each field's score and values.
     """
     details = {}
+    parsed = pred.parsed
 
     # Boolean fields
     bool_fields = [
@@ -362,7 +367,7 @@ def score_detailed(example: dspy.Example, pred: dspy.Prediction) -> dict:
         expected_key = f"expected_{field}"
         if hasattr(example, expected_key):
             expected = getattr(example, expected_key)
-            actual = getattr(pred, field, None)
+            actual = getattr(parsed, field, None)
             if isinstance(actual, str):
                 actual = actual.lower() == "true"
             details[field] = {
@@ -378,9 +383,9 @@ def score_detailed(example: dspy.Example, pred: dspy.Prediction) -> dict:
         expected_key = f"expected_{field}"
         if hasattr(example, expected_key):
             expected = getattr(example, expected_key)
-            actual = getattr(pred, field, None)
+            actual = getattr(parsed, field, None)
             match = False
-            if expected is None and (actual is None or actual == "null"):
+            if expected is None and actual is None:
                 match = True
             elif expected and actual:
                 expected_norm = expected.lower().replace("_", "")
@@ -395,7 +400,7 @@ def score_detailed(example: dspy.Example, pred: dspy.Prediction) -> dict:
     # Numeric
     if hasattr(example, "expected_max_drive_hours"):
         expected = example.expected_max_drive_hours
-        actual = pred.max_drive_hours
+        actual = parsed.max_drive_hours
         try:
             actual_f = float(actual) if actual else None
             diff = abs(actual_f - expected) if actual_f else 999

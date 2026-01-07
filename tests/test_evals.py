@@ -11,6 +11,7 @@ from powder.evals import (
     assess_conditions,
     end_to_end,
 )
+from powder.signatures import ParsedQuery
 
 
 class TestParseQueryEval:
@@ -31,17 +32,19 @@ class TestParseQueryEval:
         """Metric returns 1.0 for perfect prediction."""
         example = parse_query.POWDER_CHASE
 
-        # Create a mock prediction matching expected values
+        # Create a mock prediction using Pydantic model
         class MockPred:
-            target_date = "today"
-            max_drive_hours = 3.0
-            pass_type = "ikon"
-            needs_terrain_parks = False
-            needs_glades = False
-            needs_beginner_terrain = False
-            needs_expert_terrain = False
-            needs_night_skiing = False
-            vibe = "powder_chase"
+            parsed = ParsedQuery(
+                target_date="today",
+                max_drive_hours=3.0,
+                pass_type="ikon",
+                needs_terrain_parks=False,
+                needs_glades=False,
+                needs_beginner_terrain=False,
+                needs_expert_terrain=False,
+                needs_night_skiing=False,
+                vibe="powder_chase",
+            )
 
         score = parse_query.parse_query_metric(example, MockPred())
         assert score == 1.0
@@ -51,15 +54,17 @@ class TestParseQueryEval:
         example = parse_query.POWDER_CHASE
 
         class WrongPred:
-            target_date = "today"
-            max_drive_hours = 5.0  # Wrong
-            pass_type = "epic"  # Wrong
-            needs_terrain_parks = True  # Wrong
-            needs_glades = False
-            needs_beginner_terrain = False
-            needs_expert_terrain = False
-            needs_night_skiing = False
-            vibe = "casual"  # Wrong
+            parsed = ParsedQuery(
+                target_date="today",
+                max_drive_hours=5.0,  # Wrong
+                pass_type="epic",  # Wrong
+                needs_terrain_parks=True,  # Wrong
+                needs_glades=False,
+                needs_beginner_terrain=False,
+                needs_expert_terrain=False,
+                needs_night_skiing=False,
+                vibe="casual",  # Wrong
+            )
 
         score = parse_query.parse_query_metric(example, WrongPred())
         assert score < 1.0

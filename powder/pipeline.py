@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from powder.signatures import (
     ParseSkiQuery,
+    ParsedQuery,
     AssessConditions,
     ScoreMountain,
     GenerateRecommendation,
@@ -65,7 +66,7 @@ class SkiPipeline(dspy.Module):
 
     def _search_mountains(
         self,
-        parsed: dspy.Prediction,
+        parsed: ParsedQuery,
         user_lat: float,
         user_lon: float,
     ) -> list[dict]:
@@ -78,6 +79,7 @@ class SkiPipeline(dspy.Module):
         session = Session()
 
         try:
+            # Pydantic validators already coerce 'null' -> None
             results = query_mountains(
                 session,
                 lat=user_lat,
@@ -162,8 +164,9 @@ class SkiPipeline(dspy.Module):
             f"({user_location['lat']}, {user_location['lon']})"
         )
 
-        # Step 1: Parse query
-        parsed = self.parse_query(query=query, user_context=user_context)
+        # Step 1: Parse query -> returns ParsedQuery Pydantic model
+        result = self.parse_query(query=query, user_context=user_context)
+        parsed = result.parsed  # ParsedQuery with proper types
 
         # Resolve target date
         target_date = self._resolve_date(parsed.target_date, current_date)
