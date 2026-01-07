@@ -32,33 +32,32 @@ The LLM correctly:
 
 | Metric | Pipeline | ReAct |
 |--------|----------|-------|
-| **Hit@1** | 41.7% | 50.0% |
-| **Hit@3** | 41.7% | 66.7% |
-| **Constraint Satisfaction** | 53.8% | 0.0%* |
+| **Hit@1** | 58.3% | 50.0% |
+| **Hit@3** | 75.0% | 66.7% |
+| **Constraint Satisfaction** | 84.6% | 0.0%* |
 | **Exclusion Check** | 100% | 100% |
 
 *ReAct constraint metric is a measurement artifact - the unstructured output isn't being parsed correctly.
 
 ### Key Finding
 
-The gap between signature-level (93-100%) and end-to-end (42-67%) performance indicates integration issues, not component issues. The pieces work; the wiring needs improvement.
+After fixing the `pass_type='null'` bug with Pydantic models, Pipeline now outperforms ReAct on all metrics. The remaining gap between signature-level (93-100%) and end-to-end (58-75%) reflects legitimate query difficulty, not integration bugs.
 
 ## Error Analysis
 
-### Pipeline: "No Mountains Found" Bug
+### Pipeline: Fixed "No Mountains Found" Bug ✅
 
-6 of 12 examples returned "No mountains found matching your criteria":
+The original 6/12 "No mountains found" failures were caused by LLM outputting `pass_type='null'` (string) instead of `null` (JSON null). Fixed by using Pydantic models with `Literal` types that properly coerce JSON null → Python `None`.
 
-| Example | Filter Issue |
-|---------|--------------|
-| park_day_boston | terrain_parks filter |
-| beginner_family | beginner_terrain filter |
-| night_skiing | night_skiing filter |
-| short_drive | max_drive_hours filter |
-| expert_terrain | expert_terrain filter |
-| no_pass_powder | no pass type filter |
+### Pipeline: Remaining Failures
 
-**Root Cause**: Database query combines filters with AND logic, becoming too restrictive. Individual filters may also have bugs (e.g., distance calculation, boolean field matching).
+| Example | Issue |
+|---------|-------|
+| beginner_family | Picked Wachusett (closest) over larger learning mountains |
+| short_drive | Picked Stratton (2h48m) despite 1.5h max constraint |
+| icy_day_ikon | Picked Loon over Killington/Sugarbush |
+| no_pass_powder | Picked Smugglers' over Jay Peak (more snow) |
+| nyc_powder_day | Picked Jay Peak (Hit@3 ✓) but expected Killington for NYC |
 
 ### ReAct: Proximity Bias
 
@@ -81,54 +80,57 @@ Both approaches succeeded on:
 
 ### High Priority
 
-1. **Fix Pipeline DB Query Filters**
-   - Debug why filter combinations return empty results
-   - Test each filter in isolation vs combination
-   - Consider OR logic for some filter types
+1. ✅ **Fixed: Pipeline DB Query Filters**
+   - Used Pydantic models for proper null coercion
+   - Hit@1 improved 41.7% → 58.3%
 
-2. **Review Ground Truth**
+2. **Fix Drive Time Constraint**
+   - `short_drive` example violated 1.5h max constraint
+   - Pipeline picked Stratton (2h48m) - need to enforce constraint
+
+3. **Review Ground Truth**
    - Some expected answers may be too narrow
-   - Add multiple acceptable answers for subjective queries
+   - `nyc_powder_day` picked Jay Peak (great powder) but expected Killington
 
 ### Medium Priority
 
-3. **Fix ReAct Constraint Measurement**
+4. **Fix ReAct Constraint Measurement**
    - Parse pass type mentions from unstructured text
    - Extract drive time claims for validation
 
-4. **Add Scoring to ReAct**
+5. **Add Scoring to ReAct**
    - Give ReAct a scoring tool to compare mountains systematically
    - Reduce proximity bias
 
 ### Future Work
 
-5. **DSPy Optimization**
+6. **DSPy Optimization**
    - Use GEPA or MIPROv2 to optimize signatures
    - Train/dev split: 30 train / 9 dev examples
-   - Target: Improve Hit@1 from 42% to 70%+
+   - Target: Improve Hit@1 from 58% to 75%+
 
-6. **Historic Backtesting**
+7. **Historic Backtesting**
    - Use real weather fixtures (136 days × 30 mountains)
    - Find interesting days for additional eval examples
    - Test against known powder days, cold days, etc.
 
 ## Raw Results
 
-### Pipeline Detailed Results
+### Pipeline Detailed Results (v2 - with Pydantic fix)
 
 ```
 [powder_ikon_boston]  ✓ Hit@1  ✓ Hit@3  Constraints: 1/2
 [powder_epic_boston]  ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-[park_day_boston]     ✗ Hit@1  ✗ Hit@3  "No mountains found"
-[beginner_family]     ✗ Hit@1  ✗ Hit@3  "No mountains found"
-[night_skiing]        ✗ Hit@1  ✗ Hit@3  "No mountains found"
+[park_day_boston]     ✓ Hit@1  ✓ Hit@3  Constraints: 1/1  ← FIXED
+[beginner_family]     ✗ Hit@1  ✓ Hit@3  Picked Wachusett (closest)
+[night_skiing]        ✓ Hit@1  ✓ Hit@3  Constraints: 1/1  ← FIXED
 [glade_skiing]        ✓ Hit@1  ✓ Hit@3  Constraints: 2/2
-[short_drive]         ✗ Hit@1  ✗ Hit@3  "No mountains found"
-[expert_terrain]      ✗ Hit@1  ✗ Hit@3  "No mountains found"
-[icy_day_ikon]        ✗ Hit@1  ✗ Hit@3  Picked Stratton (expected Killington/Sugarbush)
-[no_pass_powder]      ✗ Hit@1  ✗ Hit@3  "No mountains found"
+[short_drive]         ✗ Hit@1  ✗ Hit@3  Picked Stratton (violated 1.5h constraint)
+[expert_terrain]      ✓ Hit@1  ✓ Hit@3  Constraints: 1/1  ← FIXED
+[icy_day_ikon]        ✗ Hit@1  ✗ Hit@3  Picked Loon (expected Killington)
+[no_pass_powder]      ✗ Hit@1  ✗ Hit@3  Picked Smugglers' (expected Jay Peak)
 [indy_pass]           ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-[nyc_powder_day]      ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
+[nyc_powder_day]      ✗ Hit@1  ✓ Hit@3  Picked Jay Peak (expected Killington)
 ```
 
 ### ReAct Detailed Results
@@ -150,6 +152,12 @@ Both approaches succeeded on:
 
 ## Conclusion
 
-The baseline reveals a classic integration gap: components work well individually (93%+) but struggle when combined (42-67%). The Pipeline approach is more constrained and predictable but fails when filters are too strict. The ReAct approach is more flexible but makes suboptimal choices without explicit scoring guidance.
+After fixing the `pass_type='null'` bug with Pydantic models, Pipeline now outperforms ReAct:
 
-Priority fix: Debug the database query filters to eliminate "No mountains found" failures, which would likely improve Pipeline Hit@1 from 42% to 70%+.
+| Metric | Pipeline | ReAct |
+|--------|----------|-------|
+| Hit@1 | **58.3%** | 50.0% |
+| Hit@3 | **75.0%** | 66.7% |
+| Constraints | **84.6%** | 0.0%* |
+
+The remaining failures are legitimate edge cases (drive time constraints, subjective "best" picks) rather than integration bugs. Next steps: enforce drive time constraints and consider DSPy optimization.
