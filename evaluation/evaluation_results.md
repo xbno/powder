@@ -1,163 +1,150 @@
 # Powder Evaluation Results
 
-Baseline evaluation of the ski recommendation agent using deterministic metrics (no LLM-as-judge).
+Evaluation of the ski recommendation agent using deterministic metrics (no LLM-as-judge).
 
 ## Model & Configuration
 
 - **Model**: Claude Haiku (claude-haiku-4-5-20251001)
 - **Mountains**: 30 Northeast US resorts
 - **Eval Examples**: 39 labeled examples across 4 signatures + 12 end-to-end
+- **Optimization**: GEPA (Reflective Prompt Evolution) with `enable_tool_optimization=True`
 - **Date**: January 2026
+
+## Summary: GEPA Optimization Results
+
+| Component | Baseline | After GEPA | Improvement |
+|-----------|----------|------------|-------------|
+| Pipeline Hit@1 | 58.3% | **66.7%** | +8.4% |
+| Pipeline Hit@3 | 75.0% | **75.0%** | - |
+| ReAct Hit@1 | 50.0% | **75.0%** | +25.0% |
+| ReAct Hit@3 | 66.7% | **91.7%** | +25.0% |
+
+**Key Finding**: GEPA tool optimization dramatically improved ReAct performance. By jointly optimizing the agent instructions AND tool descriptions, ReAct went from underperforming Pipeline to outperforming it on Hit@1 and Hit@3.
 
 ## Signature-Level Performance
 
-Individual DSPy signatures perform well in isolation:
+Individual DSPy signatures after GEPA optimization:
 
-| Signature | Score | Examples |
-|-----------|-------|----------|
-| ParseSkiQuery | 98.3% | 12/12 |
-| AssessConditions | 93.8% | 3/4 |
-| ScoreMountain | 92.5% | 7/8 |
-| GenerateRecommendation | 100% | 7/7 |
+| Signature | Baseline | Optimized | Change |
+|-----------|----------|-----------|--------|
+| ParseSkiQuery | 97.4% | 97.4% | - (already optimal) |
+| AssessConditions | 93.8% | 100% | +6.2% |
+| ScoreMountain | 92.5% | 96.3% | +3.8% |
+| GenerateRecommendation | 100% | 100% | - (already optimal) |
 
-The LLM correctly:
-- Parses natural language queries into structured filters
-- Assesses weather conditions and day quality
-- Scores mountains based on conditions and preferences
-- Generates coherent recommendations with reasoning
-
-## End-to-End Performance
+## End-to-End Performance (v3 - GEPA Optimized)
 
 ### Pipeline vs ReAct Comparison
 
-| Metric | Pipeline | ReAct |
-|--------|----------|-------|
-| **Hit@1** | 58.3% | 50.0% |
-| **Hit@3** | 75.0% | 66.7% |
-| **Constraint Satisfaction** | 84.6% | 0.0%* |
+| Metric | Pipeline | ReAct (Optimized) |
+|--------|----------|-------------------|
+| **Hit@1** | 66.7% | **75.0%** |
+| **Hit@3** | 75.0% | **91.7%** |
+| **Constraint Satisfaction** | 92.3% | 0.0%* |
 | **Exclusion Check** | 100% | 100% |
 
-*ReAct constraint metric is a measurement artifact - the unstructured output isn't being parsed correctly.
+*ReAct constraint metric is 0% because the metric cannot parse constraints from unstructured text, not because ReAct violates constraints.
 
-### Key Finding
+## GEPA Optimization Details
 
-After fixing the `pass_type='null'` bug with Pydantic models, Pipeline now outperforms ReAct on all metrics. The remaining gap between signature-level (93-100%) and end-to-end (58-75%) reflects legitimate query difficulty, not integration bugs.
+### What GEPA Optimized
+
+1. **Signature Instructions**: Detailed scoring frameworks with explicit calibration rules
+2. **Tool Descriptions**: Domain-specific guidance for ski queries (e.g., "prioritize mountains with 'excellent' learning_area_quality over proximity")
+3. **Tool Argument Descriptions**: Better defaults and usage hints
+
+### ScoreMountain Optimized Prompt
+
+GEPA generated a detailed scoring framework:
+- Fresh snow weighting: 14"+ = +25 points, 8-13" = +20, 4-7" = +10
+- Temperature preservation: Cold temps (<25°F) = +5, warm (>35°F) = -10
+- Pass incompatibility: -15 to -20 points
+- Drive time penalties: <90 min = 0, 90-150 = -5, 150-200 = -10, >200 = -15
+- Explicit score calibration: 85+ exceptional, 75-84 very good, 65-74 solid, <50 poor fit
+
+### ReAct Tool Optimization
+
+With `enable_tool_optimization=True`, GEPA optimized tool descriptions to include:
+- Priority ordering: terrain/feature match > pass type > conditions > drive time
+- Domain knowledge: "Stratton, Okemo, Smugglers' Notch, Waterville Valley have 'excellent' learning_area_quality"
+- Anti-proximity bias: "Avoid recommending the closest mountain if a slightly farther option significantly better matches the user's stated preferences"
 
 ## Error Analysis
 
-### Pipeline: Fixed "No Mountains Found" Bug ✅
-
-The original 6/12 "No mountains found" failures were caused by LLM outputting `pass_type='null'` (string) instead of `null` (JSON null). Fixed by using Pydantic models with `Literal` types that properly coerce JSON null → Python `None`.
-
-### Pipeline: Remaining Failures
+### Pipeline Remaining Failures (4/12)
 
 | Example | Issue |
 |---------|-------|
-| beginner_family | Picked Wachusett (closest) over larger learning mountains |
-| short_drive | Picked Stratton (2h48m) despite 1.5h max constraint |
-| icy_day_ikon | Picked Loon over Killington/Sugarbush |
+| beginner_family | Picked Stowe over Okemo/Stratton (excellent learning areas) |
+| short_drive | Picked Mount Snow despite 1.5h max constraint |
+| icy_day_ikon | Recommended skipping the day entirely |
 | no_pass_powder | Picked Smugglers' over Jay Peak (more snow) |
-| nyc_powder_day | Picked Jay Peak (Hit@3 ✓) but expected Killington for NYC |
 
-### ReAct: Proximity Bias
+### ReAct Remaining Failures (3/12)
 
-ReAct avoids the "No mountains found" issue by flexibly choosing which tools to call. However, it tends to prioritize proximity over snow conditions:
+| Example | Issue |
+|---------|-------|
+| powder_epic_boston | Picked Okemo (Hit@3 ✓) instead of Stowe |
+| glade_skiing | Picked Killington (Hit@3 ✓) instead of Jay Peak |
+| icy_day_ikon | Picked Stratton instead of Killington/Sugarbush |
 
-- `powder_ikon_boston`: Picked Stratton (closer) over Jay Peak (more snow)
-- `beginner_family`: Picked Nashoba Valley (closest) over better learning mountains
-- `no_pass_powder`: Picked Wachusett (closest) over powder destinations
+## Evolution of Results
 
-**Root Cause**: Without explicit scoring logic, ReAct optimizes for the most obvious factor (distance) rather than balancing multiple criteria.
+### v1 → v2: Pydantic Fix
+- Pipeline: 41.7% → 58.3% Hit@1 (+16.6%)
+- Fixed `pass_type='null'` string bug with Pydantic models
 
-### Successful Cases
+### v2 → v3: GEPA Optimization
+- Pipeline: 58.3% → 66.7% Hit@1 (+8.4%)
+- ReAct: 50.0% → 75.0% Hit@1 (+25.0%)
+- ReAct: 66.7% → 91.7% Hit@3 (+25.0%)
 
-Both approaches succeeded on:
-- `glade_skiing` (Pipeline) - Ikon + glades filter worked
-- `indy_pass` - Pass type filter worked
-- `nyc_powder_day` - Different origin city worked
+## Raw Results (v3)
 
-## Recommendations
-
-### High Priority
-
-1. ✅ **Fixed: Pipeline DB Query Filters**
-   - Used Pydantic models for proper null coercion
-   - Hit@1 improved 41.7% → 58.3%
-
-2. **Fix Drive Time Constraint**
-   - `short_drive` example violated 1.5h max constraint
-   - Pipeline picked Stratton (2h48m) - need to enforce constraint
-
-3. **Review Ground Truth**
-   - Some expected answers may be too narrow
-   - `nyc_powder_day` picked Jay Peak (great powder) but expected Killington
-
-### Medium Priority
-
-4. **Fix ReAct Constraint Measurement**
-   - Parse pass type mentions from unstructured text
-   - Extract drive time claims for validation
-
-5. **Add Scoring to ReAct**
-   - Give ReAct a scoring tool to compare mountains systematically
-   - Reduce proximity bias
-
-### Future Work
-
-6. **DSPy Optimization**
-   - Use GEPA or MIPROv2 to optimize signatures
-   - Train/dev split: 30 train / 9 dev examples
-   - Target: Improve Hit@1 from 58% to 75%+
-
-7. **Historic Backtesting**
-   - Use real weather fixtures (136 days × 30 mountains)
-   - Find interesting days for additional eval examples
-   - Test against known powder days, cold days, etc.
-
-## Raw Results
-
-### Pipeline Detailed Results (v2 - with Pydantic fix)
+### Pipeline Detailed Results
 
 ```
-[powder_ikon_boston]  ✓ Hit@1  ✓ Hit@3  Constraints: 1/2
+[powder_ikon_boston]  ✓ Hit@1  ✓ Hit@3  Constraints: 2/2
 [powder_epic_boston]  ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-[park_day_boston]     ✓ Hit@1  ✓ Hit@3  Constraints: 1/1  ← FIXED
-[beginner_family]     ✗ Hit@1  ✓ Hit@3  Picked Wachusett (closest)
-[night_skiing]        ✓ Hit@1  ✓ Hit@3  Constraints: 1/1  ← FIXED
+[park_day_boston]     ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
+[beginner_family]     ✗ Hit@1  ✓ Hit@3  Picked Stowe (expected Okemo/Stratton)
+[night_skiing]        ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
 [glade_skiing]        ✓ Hit@1  ✓ Hit@3  Constraints: 2/2
-[short_drive]         ✗ Hit@1  ✗ Hit@3  Picked Stratton (violated 1.5h constraint)
-[expert_terrain]      ✓ Hit@1  ✓ Hit@3  Constraints: 1/1  ← FIXED
-[icy_day_ikon]        ✗ Hit@1  ✗ Hit@3  Picked Loon (expected Killington)
+[short_drive]         ✗ Hit@1  ✗ Hit@3  Picked Mount Snow (violated 1.5h constraint)
+[expert_terrain]      ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
+[icy_day_ikon]        ✗ Hit@1  ✗ Hit@3  Recommended skipping
 [no_pass_powder]      ✗ Hit@1  ✗ Hit@3  Picked Smugglers' (expected Jay Peak)
 [indy_pass]           ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-[nyc_powder_day]      ✗ Hit@1  ✓ Hit@3  Picked Jay Peak (expected Killington)
+[nyc_powder_day]      ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
 ```
 
-### ReAct Detailed Results
+### ReAct Detailed Results (GEPA-Optimized)
 
 ```
-[powder_ikon_boston]  ✗ Hit@1  ✗ Hit@3  Picked Stratton (expected Jay Peak)
+[powder_ikon_boston]  ✓ Hit@1  ✓ Hit@3  ← FIXED by GEPA
 [powder_epic_boston]  ✗ Hit@1  ✓ Hit@3  Picked Okemo (expected Stowe)
-[park_day_boston]     ✓ Hit@1  ✓ Hit@3  Found terrain parks
-[beginner_family]     ✗ Hit@1  ✗ Hit@3  Picked Nashoba (expected Okemo/Smugglers')
-[night_skiing]        ✓ Hit@1  ✓ Hit@3  Found night skiing
+[park_day_boston]     ✓ Hit@1  ✓ Hit@3
+[beginner_family]     ✓ Hit@1  ✓ Hit@3  ← FIXED by GEPA (was picking Nashoba)
+[night_skiing]        ✓ Hit@1  ✓ Hit@3
 [glade_skiing]        ✗ Hit@1  ✓ Hit@3  Picked Killington (expected Jay Peak)
-[short_drive]         ✓ Hit@1  ✓ Hit@3  Found close mountains
-[expert_terrain]      ✓ Hit@1  ✓ Hit@3  Found expert terrain
+[short_drive]         ✓ Hit@1  ✓ Hit@3
+[expert_terrain]      ✓ Hit@1  ✓ Hit@3
 [icy_day_ikon]        ✗ Hit@1  ✗ Hit@3  Picked Stratton (expected Killington)
-[no_pass_powder]      ✗ Hit@1  ✗ Hit@3  Picked Wachusett (expected Jay Peak)
-[indy_pass]           ✓ Hit@1  ✓ Hit@3  Found Indy pass mountains
-[nyc_powder_day]      ✓ Hit@1  ✓ Hit@3  Correct from NYC
+[no_pass_powder]      ✓ Hit@1  ✓ Hit@3  ← FIXED by GEPA (was picking Wachusett)
+[indy_pass]           ✓ Hit@1  ✓ Hit@3
+[nyc_powder_day]      ✓ Hit@1  ✓ Hit@3
 ```
 
 ## Conclusion
 
-After fixing the `pass_type='null'` bug with Pydantic models, Pipeline now outperforms ReAct:
+GEPA optimization significantly improved both approaches:
 
-| Metric | Pipeline | ReAct |
-|--------|----------|-------|
-| Hit@1 | **58.3%** | 50.0% |
-| Hit@3 | **75.0%** | 66.7% |
-| Constraints | **84.6%** | 0.0%* |
+| Metric | Pipeline | ReAct (Optimized) | Winner |
+|--------|----------|-------------------|--------|
+| Hit@1 | 66.7% | **75.0%** | ReAct |
+| Hit@3 | 75.0% | **91.7%** | ReAct |
+| Constraints | **92.3%** | 0.0%* | Pipeline |
 
-The remaining failures are legitimate edge cases (drive time constraints, subjective "best" picks) rather than integration bugs. Next steps: enforce drive time constraints and consider DSPy optimization.
+The tool optimization feature (`enable_tool_optimization=True`) was critical for ReAct - it allowed GEPA to add domain-specific guidance to tool descriptions, reducing the proximity bias that previously hurt ReAct performance.
+
+Pipeline remains better for constraint satisfaction because it has explicit filtering logic, while ReAct's unstructured output makes constraint verification harder to measure.

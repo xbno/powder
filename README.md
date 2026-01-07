@@ -86,22 +86,62 @@ OPEN_ROUTE_SERVICE_API_KEY=your_key_here  # Get free key at https://openrouteser
 ## Usage
 
 ```bash
-# Run with a query
-.venv/bin/python -m powder.run "Where should I ski tomorrow? I have an Ikon pass."
+# Run with a query (uses ReAct agent by default)
+python -m powder "Where should I ski tomorrow? I have an Ikon pass."
 
-# Use pipeline mode (default, recommended)
-.venv/bin/python -m powder.run "Best powder within 3 hours?" --mode pipeline
+# Use Pipeline instead of ReAct
+python -m powder --pipeline "Best powder within 3 hours?"
 
-# Use ReAct mode
-.venv/bin/python -m powder.run "Best powder?" --mode react
+# Run on historic data (uses fixtures instead of live weather API)
+python -m powder --date 2025-02-17 "Best powder day with Ikon pass?"
 
-# Different model
-.venv/bin/python -m powder.run "Best terrain park?" --model anthropic/claude-sonnet-4-20250514
+# Different starting location
+python -m powder --location nyc "Epic pass, best terrain?"
+
+# Interactive mode
+python -m powder
 ```
+
+### Historic Sanity Checks
+
+Test the agent on known good/bad days from the 2024-2025 season:
+
+**Powder Days (clear winners):**
+| Date | Scenario | Expected | Command |
+|------|----------|----------|---------|
+| 2025-02-17 | Big dump | Sugarloaf (5.7") | `python -m powder --date 2025-02-17 "Best powder with Ikon?"` |
+| 2025-03-29 | Late season storm | Stowe (5.5") | `python -m powder --date 2025-03-29 "Epic pass powder?"` |
+
+**Skip Days (bad conditions):**
+| Date | Scenario | Conditions | Command |
+|------|----------|------------|---------|
+| 2025-01-08 | Brutal cold | -8°F, 0.4" avg | `python -m powder --date 2025-01-08 "Worth skiing today?"` |
+| 2024-12-22 | Pre-Xmas ice | -7°F, no fresh | `python -m powder --date 2024-12-22 "Ikon pass today?"` |
+| 2025-03-31 | Spring slush | 54°F avg, 69°F max | `python -m powder --date 2025-03-31 "Should I ski today?"` |
+
+**Beautiful Days (multiple good options):**
+| Date | Scenario | Conditions | Command |
+|------|----------|------------|---------|
+| 2025-01-29 | Warm refresh | 1-2" everywhere, 25°F | `python -m powder --date 2025-01-29 "Best skiing today?"` |
+| 2025-02-03 | Tie-breaker | 1" avg, pleasant | `python -m powder --date 2025-02-03 "Where should I go?"` |
+
+These dates have known conditions - useful for validating agent behavior on different scenarios.
 
 ## Evaluation
 
-The evaluation framework measures agent performance with **deterministic metrics** (no LLM-as-judge):
+The evaluation framework measures agent performance with **deterministic metrics** (no LLM-as-judge).
+
+### Current Results (GEPA-Optimized)
+
+| Metric | Pipeline | ReAct |
+|--------|----------|-------|
+| **Hit@1** | 66.7% | **75.0%** |
+| **Hit@3** | 75.0% | **91.7%** |
+| **Constraint Satisfaction** | **92.3%** | 0.0%* |
+
+*ReAct constraint metric is a measurement artifact (can't parse constraints from unstructured text).
+
+ReAct improved from 50% → 75% Hit@1 after GEPA optimization with `enable_tool_optimization=True`.
 
 ### Metrics
 
@@ -111,17 +151,16 @@ The evaluation framework measures agent performance with **deterministic metrics
 | **Hit@3** | Expected mountain appears in top 3 |
 | **Constraint Satisfaction** | Respects pass type, drive time, terrain requirements |
 | **Parse Accuracy** | Correctly extracts filters from natural language |
-| **Grounding** | Reasoning mentions actual mountain data |
 
 ### Dataset
 
-39 labeled examples across 4 signatures:
+39 labeled examples across 4 signatures + 12 end-to-end:
 
-- `ParseSkiQuery` - 12 examples (query → structured filters)
-- `AssessConditions` - 4 examples (conditions → day quality)
-- `ScoreMountain` - 8 examples (mountain + prefs → score)
-- `GenerateRecommendation` - 7 examples (scored list → final pick)
-- End-to-end pipeline - 12 examples with full ground truth
+- `ParseSkiQuery` - 12 examples (97.4% accuracy)
+- `AssessConditions` - 4 examples (100% after GEPA)
+- `ScoreMountain` - 8 examples (96.3% after GEPA)
+- `GenerateRecommendation` - 7 examples (100% accuracy)
+- End-to-end - 12 examples with full ground truth
 
 ### Running Evals
 
@@ -129,9 +168,26 @@ The evaluation framework measures agent performance with **deterministic metrics
 make eval           # Run full evaluation suite
 make eval-verbose   # Show detailed output for failures
 
-# With specific model
-.venv/bin/python -m powder.evals.runner --model anthropic/claude-sonnet-4-20250514
+# Run specific mode
+python -m powder.evals.runner --mode react
+python -m powder.evals.runner --mode pipeline
+python -m powder.evals.runner --mode both
 ```
+
+### GEPA Optimization
+
+Optimize signatures with GEPA (Reflective Prompt Evolution):
+
+```bash
+# Optimize individual signatures
+python -m powder.evals.optimize --signature score_mountain --max-calls 50
+python -m powder.evals.optimize --signature assess_conditions --max-calls 50
+
+# Optimize ReAct with tool descriptions
+python -m powder.evals.optimize --signature react --max-calls 30
+```
+
+Optimized prompts are saved to `powder/optimized/` and automatically loaded by the pipeline.
 
 ### Historic Weather Data (Backtesting)
 
@@ -166,7 +222,7 @@ make test-cov   # With coverage report
 
 ```
 powder/
-├── run.py              # CLI entry point
+├── __main__.py         # CLI entry point (python -m powder)
 ├── pipeline.py         # Explicit multi-step pipeline
 ├── agent.py            # ReAct-based agent
 ├── signatures.py       # DSPy signatures
@@ -178,13 +234,17 @@ powder/
 ├── data/
 │   ├── mountains.jsonl # Mountain metadata
 │   └── mountains.db    # SQLite database
+├── optimized/          # GEPA-optimized prompts (auto-loaded)
+│   ├── parse_query.json
+│   ├── score_mountain.json
+│   ├── assess_conditions.json
+│   └── react_agent.json
 └── evals/
     ├── runner.py       # Evaluation runner
-    ├── parse_query.py  # ParseSkiQuery eval
-    ├── assess_conditions.py
-    ├── score_mountain.py
-    ├── generate_recommendation.py
-    └── end_to_end.py   # Full pipeline eval
+    ├── optimize.py     # GEPA optimization script
+    ├── backtest.py     # Historic data backtesting
+    ├── find_interesting_days.py
+    └── fixtures/       # Historic weather data (136 days)
 ```
 
 ## Stack
