@@ -108,7 +108,14 @@ eval:
 ifeq ($(wildcard $(PYTHON)),)
 	$(error "$(PYTHON) not found. Run 'make venv' first.")
 endif
-	$(PYTHON) -m powder.eval.backtest
+	$(PYTHON) -m powder.evals.runner
+
+# Run evaluation with verbose output
+eval-verbose:
+ifeq ($(wildcard $(PYTHON)),)
+	$(error "$(PYTHON) not found. Run 'make venv' first.")
+endif
+	$(PYTHON) -m powder.evals.runner --verbose
 
 # Seed the database
 seed-db:
@@ -136,5 +143,6 @@ help:
 	@echo ""
 	@echo "Running:"
 	@echo "  make run          - Run the agent interactively"
-	@echo "  make eval         - Run evaluation/backtesting"
+	@echo "  make eval         - Run evaluation suite"
+	@echo "  make eval-verbose - Run evaluation with detailed output"
 	@echo "  make seed-db      - Seed the mountain database"
