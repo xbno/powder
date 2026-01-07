@@ -45,6 +45,95 @@ class Mountain(Base):
     learning_area_quality = Column(Text)  # "excellent", "good", "basic"
 
 
+VALID_STATES = {"VT", "NH", "ME", "MA", "NY", "CT", "RI"}
+VALID_PASS_TYPES = {"epic", "ikon", "indy"}
+VALID_TERRAIN_LEVELS = {"easy", "intermediate", "hard", "superpipe"}
+VALID_GLADE_LEVELS = {"easy", "intermediate", "hard"}
+VALID_LIFT_TYPES = {"gondola", "bubble", "highspeed", "fixed", "tram"}
+VALID_LEARNING_QUALITY = {"excellent", "good", "basic"}
+
+
+def validate_mountain(data: dict) -> tuple[bool, list[str]]:
+    """Validate mountain data dictionary.
+
+    Args:
+        data: Dictionary with mountain fields
+
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    errors = []
+
+    # Required fields
+    required = ["name", "state", "lat", "lon"]
+    for field in required:
+        if field not in data or data[field] is None:
+            errors.append(f"Missing required field: {field}")
+
+    # State validation
+    if data.get("state") and data["state"] not in VALID_STATES:
+        errors.append(f"Invalid state '{data['state']}'. Must be one of: {VALID_STATES}")
+
+    # Coordinate validation
+    if data.get("lat") is not None:
+        if not (-90 <= data["lat"] <= 90):
+            errors.append(f"Invalid latitude {data['lat']}. Must be between -90 and 90")
+    if data.get("lon") is not None:
+        if not (-180 <= data["lon"] <= 180):
+            errors.append(f"Invalid longitude {data['lon']}. Must be between -180 and 180")
+
+    # Percentage validations (0-100)
+    pct_fields = ["green_pct", "blue_pct", "black_pct", "double_black_pct", "snowmaking_pct"]
+    for field in pct_fields:
+        if data.get(field) is not None:
+            if not (0 <= data[field] <= 100):
+                errors.append(f"Invalid {field}: {data[field]}. Must be 0-100")
+
+    # Terrain percentages should sum to ~100
+    terrain_pcts = [data.get(f, 0) or 0 for f in ["green_pct", "blue_pct", "black_pct", "double_black_pct"]]
+    if all(data.get(f) is not None for f in ["green_pct", "blue_pct", "black_pct", "double_black_pct"]):
+        total = sum(terrain_pcts)
+        if not (95 <= total <= 105):
+            errors.append(f"Terrain percentages sum to {total}, should be ~100")
+
+    # Pass types validation
+    if data.get("pass_types"):
+        for pt in data["pass_types"].split(","):
+            if pt.strip().lower() not in VALID_PASS_TYPES:
+                errors.append(f"Invalid pass type '{pt}'. Must be one of: {VALID_PASS_TYPES}")
+
+    # Terrain parks validation
+    if data.get("terrain_parks"):
+        for level in data["terrain_parks"].split(","):
+            if level.strip().lower() not in VALID_TERRAIN_LEVELS:
+                errors.append(f"Invalid terrain park level '{level}'. Must be one of: {VALID_TERRAIN_LEVELS}")
+
+    # Glades validation
+    if data.get("glades"):
+        for level in data["glades"].split(","):
+            if level.strip().lower() not in VALID_GLADE_LEVELS:
+                errors.append(f"Invalid glade level '{level}'. Must be one of: {VALID_GLADE_LEVELS}")
+
+    # Lift types validation
+    if data.get("lift_types"):
+        for lt in data["lift_types"].split(","):
+            if lt.strip().lower() not in VALID_LIFT_TYPES:
+                errors.append(f"Invalid lift type '{lt}'. Must be one of: {VALID_LIFT_TYPES}")
+
+    # Learning area quality validation
+    if data.get("learning_area_quality"):
+        if data["learning_area_quality"].lower() not in VALID_LEARNING_QUALITY:
+            errors.append(f"Invalid learning_area_quality '{data['learning_area_quality']}'. Must be one of: {VALID_LEARNING_QUALITY}")
+
+    # Positive integer validations
+    positive_fields = ["vertical_drop", "num_trails", "num_lifts", "avg_weekday_price", "avg_weekend_price"]
+    for field in positive_fields:
+        if data.get(field) is not None and data[field] < 0:
+            errors.append(f"Invalid {field}: {data[field]}. Must be positive")
+
+    return len(errors) == 0, errors
+
+
 def get_engine(db_path: Path | str = ":memory:"):
     """Create SQLAlchemy engine."""
     if db_path == ":memory:":
