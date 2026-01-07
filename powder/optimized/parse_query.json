@@ -1,0 +1,30 @@
+{
+  "traces": [],
+  "train": [],
+  "demos": [],
+  "signature": {
+    "instructions": "Extract structured constraints from natural language ski query.\n\nSeparates HARD FILTERS (used to exclude mountains from DB) from\nSOFT PREFERENCES (used to score/rank candidates).",
+    "fields": [
+      {
+        "prefix": "Query:",
+        "description": "${query}"
+      },
+      {
+        "prefix": "User Context:",
+        "description": "Current date, location defaults"
+      },
+      {
+        "prefix": "Parsed:",
+        "description": "Structured query with filters and preferences"
+      }
+    ]
+  },
+  "lm": null,
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.10",
+      "dspy": "3.0.4",
+      "cloudpickle": "3.1"
+    }
+  }
+}
