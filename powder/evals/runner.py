@@ -22,7 +22,7 @@ from powder.evals import (
     assess_conditions,
 )
 from powder.evals.end_to_end import (
-    TRAIN_EXAMPLES as E2E_EXAMPLES,
+    get_examples as get_e2e_examples,
     EndToEndExample,
     EvalResult,
     calculate_hit_at_1,
@@ -145,7 +145,7 @@ def run_end_to_end_eval(
 
             # Calculate metrics
             hit_1 = calculate_hit_at_1(example, top_pick)
-            hit_3 = calculate_hit_at_3(example, top_3)
+            hit_3 = calculate_hit_at_3(example, top_3, top_pick)
 
             # Build candidates list for constraint check
             candidates = [s["mountain"] for s in result.scores] if result.scores else []
@@ -387,7 +387,7 @@ def run_all_evals(
         # 1. ParseSkiQuery
         parse_result = run_signature_eval(
             name="ParseSkiQuery",
-            examples=parse_query.get_trainset(),
+            examples=parse_query.get_examples(),
             predictor=dspy.Predict(ParseSkiQuery),
             metric_fn=parse_query.get_metric(),
             verbose=verbose,
@@ -397,7 +397,7 @@ def run_all_evals(
         # 2. AssessConditions
         assess_result = run_signature_eval(
             name="AssessConditions",
-            examples=assess_conditions.get_trainset(),
+            examples=assess_conditions.get_examples(),
             predictor=dspy.Predict(AssessConditions),
             metric_fn=assess_conditions.get_metric(),
             verbose=verbose,
@@ -407,7 +407,7 @@ def run_all_evals(
         # 3. ScoreMountain
         score_result = run_signature_eval(
             name="ScoreMountain",
-            examples=score_mountain.get_trainset(),
+            examples=score_mountain.get_examples(),
             predictor=dspy.Predict(ScoreMountain),
             metric_fn=score_mountain.get_metric(),
             verbose=verbose,
@@ -417,7 +417,7 @@ def run_all_evals(
         # 4. GenerateRecommendation
         gen_result = run_signature_eval(
             name="GenerateRecommendation",
-            examples=generate_recommendation.get_trainset(),
+            examples=generate_recommendation.get_examples(),
             predictor=dspy.Predict(GenerateRecommendation),
             metric_fn=generate_recommendation.get_metric(),
             verbose=verbose,
@@ -425,12 +425,13 @@ def run_all_evals(
         results["signatures"]["GenerateRecommendation"] = gen_result
 
     # Filter E2E examples if specific example requested
-    e2e_examples = E2E_EXAMPLES
+    all_e2e_examples = get_e2e_examples()
+    e2e_examples = all_e2e_examples
     if example_id:
-        e2e_examples = [ex for ex in E2E_EXAMPLES if ex.id == example_id]
+        e2e_examples = [ex for ex in all_e2e_examples if ex.id == example_id]
         if not e2e_examples:
             print(f"\n⚠️  No example found with id: {example_id}")
-            print(f"   Available: {[ex.id for ex in E2E_EXAMPLES]}")
+            print(f"   Available: {[ex.id for ex in all_e2e_examples]}")
             return results
 
     # 5. End-to-End Pipeline

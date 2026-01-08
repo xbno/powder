@@ -235,6 +235,11 @@ def assess_conditions_metric(example, pred, trace=None) -> float:
 # --- Convenience functions for optimization ---
 
 
+def get_examples() -> list[dspy.Example]:
+    """Get all examples."""
+    return TRAIN_EXAMPLES + VAL_EXAMPLES
+
+
 def get_trainset() -> list[dspy.Example]:
     """Get training examples (first 3 of 4 = 75%)."""
     return TRAIN_EXAMPLES

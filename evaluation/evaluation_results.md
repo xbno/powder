@@ -1,150 +1,100 @@
 # Powder Evaluation Results
 
-Evaluation of the ski recommendation agent using deterministic metrics (no LLM-as-judge).
+Evaluation of the ski recommendation pipeline using deterministic metrics (no LLM-as-judge).
 
 ## Model & Configuration
 
 - **Model**: Claude Haiku (claude-haiku-4-5-20251001)
 - **Mountains**: 30 Northeast US resorts
-- **Eval Examples**: 39 labeled examples across 4 signatures + 12 end-to-end
-- **Optimization**: GEPA (Reflective Prompt Evolution) with `enable_tool_optimization=True`
+- **Eval Examples**: 39 labeled examples across 4 signatures + 16 end-to-end
+- **Optimization**: GEPA (Reflective Prompt Evolution)
 - **Date**: January 2026
 
-## Summary: GEPA Optimization Results
+## Current Performance (v2b)
 
-| Component | Baseline | After GEPA | Improvement |
-|-----------|----------|------------|-------------|
-| Pipeline Hit@1 | 58.3% | **66.7%** | +8.4% |
-| Pipeline Hit@3 | 75.0% | **75.0%** | - |
-| ReAct Hit@1 | 50.0% | **75.0%** | +25.0% |
-| ReAct Hit@3 | 66.7% | **91.7%** | +25.0% |
+### Signature-Level Metrics
 
-**Key Finding**: GEPA tool optimization dramatically improved ReAct performance. By jointly optimizing the agent instructions AND tool descriptions, ReAct went from underperforming Pipeline to outperforming it on Hit@1 and Hit@3.
+| Signature | Score | Status |
+|-----------|-------|--------|
+| ParseSkiQuery | 97.4% | 12/12 passed |
+| AssessConditions | 83.3% | 3/4 passed |
+| ScoreMountain | 93.8% | 8/8 passed |
+| GenerateRecommendation | 100.0% | 7/7 passed |
 
-## Signature-Level Performance
+### End-to-End Pipeline Metrics
 
-Individual DSPy signatures after GEPA optimization:
+| Metric | v1b | v2b | Change |
+|--------|-----|-----|--------|
+| **Hit@1** | 87.5% | 87.5% | - |
+| **Hit@3** | 87.5% | **93.8%** | +6.3% |
+| **Constraint Satisfaction** | 100.0% | 100.0% | - |
+| **Exclusion Check** | 100.0% | 100.0% | - |
 
-| Signature | Baseline | Optimized | Change |
-|-----------|----------|-----------|--------|
-| ParseSkiQuery | 97.4% | 97.4% | - (already optimal) |
-| AssessConditions | 93.8% | 100% | +6.2% |
-| ScoreMountain | 92.5% | 96.3% | +3.8% |
-| GenerateRecommendation | 100% | 100% | - (already optimal) |
+## End-to-End Detailed Results (v2b)
 
-## End-to-End Performance (v3 - GEPA Optimized)
+### Passing Examples (14/16)
 
-### Pipeline vs ReAct Comparison
+| Example | Query | Hit@1 | Hit@3 | Constraints |
+|---------|-------|-------|-------|-------------|
+| powder_ikon_feb17 | Best powder today? I have an Ikon pass | ✓ | ✓ | 1/1 |
+| powder_no_pass_jan02 | Where has the best snow today? | ✓ | ✓ | N/A |
+| powder_south_vt_dec10 | Best skiing within 3 hours of Boston? | ✓ | ✓ | 1/1 |
+| nyc_powder_mar29 | Best powder today from NYC? | ✓ | ✓ | N/A |
+| park_day_jan02 | I want to hit rails and jumps tomorrow | ✓ | ✓ | N/A |
+| glades_ikon_feb17 | Looking for tree skiing, have Ikon pass | ✓ | ✓ | 2/2 |
+| skip_brutal_cold_jan08 | Worth skiing today? | ✓ | ✓ | N/A |
+| skip_rainy_dec11 | Should I ski today? | ✓ | ✓ | N/A |
+| skip_spring_slush_mar31 | Where should I ski today? | ✓ | ✓ | N/A |
+| powder_epic_mar29 | Epic pass, where's the best snow today? | ✓ | ✓ | 1/1 |
+| expert_terrain_mar29 | Want steep chutes and double blacks | ✓ | ✓ | 1/1 |
+| ambiguous_feb03 | Best skiing today from Boston? | ✓ | ✓ | N/A |
+| skip_prexmas_ice_dec22 | Ikon pass today? | ✓ | ✓ | N/A |
+| skip_warm_rain_dec30 | Worth driving to ski today? | ✓ | ✓ | N/A |
 
-| Metric | Pipeline | ReAct (Optimized) |
-|--------|----------|-------------------|
-| **Hit@1** | 66.7% | **75.0%** |
-| **Hit@3** | 75.0% | **91.7%** |
-| **Constraint Satisfaction** | 92.3% | 0.0%* |
-| **Exclusion Check** | 100% | 100% |
+### Failing Examples (2/16)
 
-*ReAct constraint metric is 0% because the metric cannot parse constraints from unstructured text, not because ReAct violates constraints.
-
-## GEPA Optimization Details
-
-### What GEPA Optimized
-
-1. **Signature Instructions**: Detailed scoring frameworks with explicit calibration rules
-2. **Tool Descriptions**: Domain-specific guidance for ski queries (e.g., "prioritize mountains with 'excellent' learning_area_quality over proximity")
-3. **Tool Argument Descriptions**: Better defaults and usage hints
-
-### ScoreMountain Optimized Prompt
-
-GEPA generated a detailed scoring framework:
-- Fresh snow weighting: 14"+ = +25 points, 8-13" = +20, 4-7" = +10
-- Temperature preservation: Cold temps (<25°F) = +5, warm (>35°F) = -10
-- Pass incompatibility: -15 to -20 points
-- Drive time penalties: <90 min = 0, 90-150 = -5, 150-200 = -10, >200 = -15
-- Explicit score calibration: 85+ exceptional, 75-84 very good, 65-74 solid, <50 poor fit
-
-### ReAct Tool Optimization
-
-With `enable_tool_optimization=True`, GEPA optimized tool descriptions to include:
-- Priority ordering: terrain/feature match > pass type > conditions > drive time
-- Domain knowledge: "Stratton, Okemo, Smugglers' Notch, Waterville Valley have 'excellent' learning_area_quality"
-- Anti-proximity bias: "Avoid recommending the closest mountain if a slightly farther option significantly better matches the user's stated preferences"
+| Example | Query | Issue |
+|---------|-------|-------|
+| beginner_family_jan29 | Taking my kids for their first ski lesson | Hit@1 ✗, Hit@3 ✓. Picked Nashoba Valley, expected Okemo/Smugglers'/Bretton Woods/Stratton |
+| ambiguous_jan29 | Where should I ski today? | Hit@1 ✗, Hit@3 ✗. Recommended skipping, expected Gore/Jiminy/Killington/Stowe |
 
 ## Error Analysis
 
-### Pipeline Remaining Failures (4/12)
+### beginner_family_jan29
+- **Predicted**: Nashoba Valley
+- **Expected**: Okemo, Smugglers' Notch, Bretton Woods, or Stratton
+- **Issue**: Pipeline prioritized proximity over learning area quality. Nashoba is close to Boston but the expected mountains have "excellent" learning_area_quality ratings.
 
-| Example | Issue |
-|---------|-------|
-| beginner_family | Picked Stowe over Okemo/Stratton (excellent learning areas) |
-| short_drive | Picked Mount Snow despite 1.5h max constraint |
-| icy_day_ikon | Recommended skipping the day entirely |
-| no_pass_powder | Picked Smugglers' over Jay Peak (more snow) |
-
-### ReAct Remaining Failures (3/12)
-
-| Example | Issue |
-|---------|-------|
-| powder_epic_boston | Picked Okemo (Hit@3 ✓) instead of Stowe |
-| glade_skiing | Picked Killington (Hit@3 ✓) instead of Jay Peak |
-| icy_day_ikon | Picked Stratton instead of Killington/Sugarbush |
+### ambiguous_jan29
+- **Predicted**: Skip today (poor conditions)
+- **Expected**: Gore Mountain, Jiminy Peak, Killington, or Stowe
+- **Issue**: Pipeline was too conservative, recommending skipping when conditions were marginal but skiable. The expected mountains had acceptable conditions for the day.
 
 ## Evolution of Results
 
-### v1 → v2: Pydantic Fix
-- Pipeline: 41.7% → 58.3% Hit@1 (+16.6%)
-- Fixed `pass_type='null'` string bug with Pydantic models
+### v1b → v2b
+- Hit@3: 87.5% → 93.8% (+6.3%)
+- Fixed: `ambiguous_feb03` now correctly returns a top-3 pick
 
-### v2 → v3: GEPA Optimization
-- Pipeline: 58.3% → 66.7% Hit@1 (+8.4%)
-- ReAct: 50.0% → 75.0% Hit@1 (+25.0%)
-- ReAct: 66.7% → 91.7% Hit@3 (+25.0%)
+### Historical Context (pre-v1b)
 
-## Raw Results (v3)
+Earlier versions had significantly lower performance before GEPA optimization and Pydantic fixes:
 
-### Pipeline Detailed Results
+| Version | Hit@1 | Hit@3 | Key Change |
+|---------|-------|-------|------------|
+| v1 | 41.7% | - | Baseline |
+| v2 | 58.3% | 75.0% | Pydantic fix (`pass_type='null'` bug) |
+| v3 | 66.7% | 75.0% | GEPA optimization |
+| v1b | 87.5% | 87.5% | New eval set with historic weather data |
+| v2b | 87.5% | 93.8% | Minor improvements |
 
-```
-[powder_ikon_boston]  ✓ Hit@1  ✓ Hit@3  Constraints: 2/2
-[powder_epic_boston]  ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-[park_day_boston]     ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-[beginner_family]     ✗ Hit@1  ✓ Hit@3  Picked Stowe (expected Okemo/Stratton)
-[night_skiing]        ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-[glade_skiing]        ✓ Hit@1  ✓ Hit@3  Constraints: 2/2
-[short_drive]         ✗ Hit@1  ✗ Hit@3  Picked Mount Snow (violated 1.5h constraint)
-[expert_terrain]      ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-[icy_day_ikon]        ✗ Hit@1  ✗ Hit@3  Recommended skipping
-[no_pass_powder]      ✗ Hit@1  ✗ Hit@3  Picked Smugglers' (expected Jay Peak)
-[indy_pass]           ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-[nyc_powder_day]      ✓ Hit@1  ✓ Hit@3  Constraints: 1/1
-```
+## Remaining Issues
 
-### ReAct Detailed Results (GEPA-Optimized)
+1. **Proximity bias for beginners**: Pipeline picks nearby mountains over those with better learning facilities
+2. **Over-conservative skip recommendations**: Pipeline sometimes recommends skipping when conditions are marginal but skiable
 
-```
-[powder_ikon_boston]  ✓ Hit@1  ✓ Hit@3  ← FIXED by GEPA
-[powder_epic_boston]  ✗ Hit@1  ✓ Hit@3  Picked Okemo (expected Stowe)
-[park_day_boston]     ✓ Hit@1  ✓ Hit@3
-[beginner_family]     ✓ Hit@1  ✓ Hit@3  ← FIXED by GEPA (was picking Nashoba)
-[night_skiing]        ✓ Hit@1  ✓ Hit@3
-[glade_skiing]        ✗ Hit@1  ✓ Hit@3  Picked Killington (expected Jay Peak)
-[short_drive]         ✓ Hit@1  ✓ Hit@3
-[expert_terrain]      ✓ Hit@1  ✓ Hit@3
-[icy_day_ikon]        ✗ Hit@1  ✗ Hit@3  Picked Stratton (expected Killington)
-[no_pass_powder]      ✓ Hit@1  ✓ Hit@3  ← FIXED by GEPA (was picking Wachusett)
-[indy_pass]           ✓ Hit@1  ✓ Hit@3
-[nyc_powder_day]      ✓ Hit@1  ✓ Hit@3
-```
+## Signature Failure Details
 
-## Conclusion
-
-GEPA optimization significantly improved both approaches:
-
-| Metric | Pipeline | ReAct (Optimized) | Winner |
-|--------|----------|-------------------|--------|
-| Hit@1 | 66.7% | **75.0%** | ReAct |
-| Hit@3 | 75.0% | **91.7%** | ReAct |
-| Constraints | **92.3%** | 0.0%* | Pipeline |
-
-The tool optimization feature (`enable_tool_optimization=True`) was critical for ReAct - it allowed GEPA to add domain-specific guidance to tool descriptions, reducing the proximity bias that previously hurt ReAct performance.
-
-Pipeline remains better for constraint satisfaction because it has explicit filtering logic, while ReAct's unstructured output makes constraint verification harder to measure.
+### AssessConditions (83.3%)
+- Example 2 failed with score 0.33
+- Input involved Gunstock conditions assessment

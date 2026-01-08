@@ -338,6 +338,11 @@ def parse_query_metric(
     return sum(scores) / len(scores) if scores else 0.0
 
 
+def get_examples() -> list[dspy.Example]:
+    """Get all examples."""
+    return TRAIN_EXAMPLES + VAL_EXAMPLES
+
+
 def get_trainset() -> list[dspy.Example]:
     """Get training examples (first 9 of 12 = 75%)."""
     return TRAIN_EXAMPLES

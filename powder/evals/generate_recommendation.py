@@ -350,6 +350,11 @@ def generate_recommendation_metric(
     return sum(scores) / len(scores) if scores else 0.0
 
 
+def get_examples() -> list[dspy.Example]:
+    """Get all examples."""
+    return TRAIN_EXAMPLES + VAL_EXAMPLES
+
+
 def get_trainset() -> list[dspy.Example]:
     """Get training examples (first 5 of 7 = 71%)."""
     return TRAIN_EXAMPLES
