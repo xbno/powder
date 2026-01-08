@@ -336,9 +336,9 @@ Pipeline improved from 41.7% → 93.8% Hit@1 through Pydantic fixes and GEPA opt
 47 labeled examples across 4 signatures + 16 end-to-end:
 
 - `ParseSkiQuery` - 12 examples (97.4% accuracy)
-- `AssessConditions` - 4 examples (83.3%)
-- `ScoreMountain` - 8 examples (93.8%)
-- `GenerateRecommendation` - 7 examples (100% accuracy)
+- `AssessConditions` - 4 examples (100.0%)
+- `ScoreMountain` - 8 examples (96.2%)
+- `GenerateRecommendation` - 7 examples (100.0% accuracy)
 - End-to-end - 16 examples with historic weather data
 
 ### Running Evals

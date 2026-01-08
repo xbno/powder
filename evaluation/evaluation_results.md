@@ -18,7 +18,7 @@ Evaluation of the ski recommendation pipeline using deterministic metrics (no LL
 |-----------|-------|--------|
 | ParseSkiQuery | 97.4% | 12/12 passed |
 | AssessConditions | 100.0% | 4/4 passed |
-| ScoreMountain | 93.8% | 8/8 passed |
+| ScoreMountain | 96.2% | 8/8 passed |
 | GenerateRecommendation | 100.0% | 7/7 passed |
 
 ### End-to-End Metrics
