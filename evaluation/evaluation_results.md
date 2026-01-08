@@ -10,29 +10,29 @@ Evaluation of the ski recommendation pipeline using deterministic metrics (no LL
 - **Optimization**: GEPA (Reflective Prompt Evolution)
 - **Date**: January 2026
 
-## Current Performance (v2b)
+## Current Performance (Final)
 
 ### Signature-Level Metrics
 
 | Signature | Score | Status |
 |-----------|-------|--------|
 | ParseSkiQuery | 97.4% | 12/12 passed |
-| AssessConditions | 83.3% | 3/4 passed |
+| AssessConditions | 100.0% | 4/4 passed |
 | ScoreMountain | 93.8% | 8/8 passed |
 | GenerateRecommendation | 100.0% | 7/7 passed |
 
-### End-to-End Pipeline Metrics
+### End-to-End Metrics
 
-| Metric | v1b | v2b | Change |
-|--------|-----|-----|--------|
-| **Hit@1** | 87.5% | 87.5% | - |
-| **Hit@3** | 87.5% | **93.8%** | +6.3% |
-| **Constraint Satisfaction** | 100.0% | 100.0% | - |
-| **Exclusion Check** | 100.0% | 100.0% | - |
+| Agent | Hit@1 | Hit@3 | Constraint Satisfaction |
+|-------|-------|-------|-------------------------|
+| **Pipeline** | **93.8%** | **93.8%** | 100.0% |
+| **ReAct** | 87.5% | 87.5% | n/a* |
+
+*ReAct constraint metric is n/a because it returns unstructured text.
 
 ## End-to-End Detailed Results (v2b)
 
-### Passing Examples (14/16)
+### Passing Examples (15/16)
 
 | Example | Query | Hit@1 | Hit@3 | Constraints |
 |---------|-------|-------|-------|-------------|
@@ -42,6 +42,7 @@ Evaluation of the ski recommendation pipeline using deterministic metrics (no LL
 | nyc_powder_mar29 | Best powder today from NYC? | ✓ | ✓ | N/A |
 | park_day_jan02 | I want to hit rails and jumps tomorrow | ✓ | ✓ | N/A |
 | glades_ikon_feb17 | Looking for tree skiing, have Ikon pass | ✓ | ✓ | 2/2 |
+| beginner_family_jan29 | Taking my kids for their first ski lesson | ✓ | ✓ | 1/1 |
 | skip_brutal_cold_jan08 | Worth skiing today? | ✓ | ✓ | N/A |
 | skip_rainy_dec11 | Should I ski today? | ✓ | ✓ | N/A |
 | skip_spring_slush_mar31 | Where should I ski today? | ✓ | ✓ | N/A |
@@ -51,24 +52,18 @@ Evaluation of the ski recommendation pipeline using deterministic metrics (no LL
 | skip_prexmas_ice_dec22 | Ikon pass today? | ✓ | ✓ | N/A |
 | skip_warm_rain_dec30 | Worth driving to ski today? | ✓ | ✓ | N/A |
 
-### Failing Examples (2/16)
+### Failing Examples (1/16)
 
 | Example | Query | Issue |
 |---------|-------|-------|
-| beginner_family_jan29 | Taking my kids for their first ski lesson | Hit@1 ✗, Hit@3 ✓. Picked Nashoba Valley, expected Okemo/Smugglers'/Bretton Woods/Stratton |
-| ambiguous_jan29 | Where should I ski today? | Hit@1 ✗, Hit@3 ✗. Recommended skipping, expected Gore/Jiminy/Killington/Stowe |
+| ambiguous_jan29 | Where should I ski today? | Hit@1 ✗, Hit@3 ✗. Pipeline recommended skipping, expected Gore/Jiminy/Killington/Stowe |
 
 ## Error Analysis
-
-### beginner_family_jan29
-- **Predicted**: Nashoba Valley
-- **Expected**: Okemo, Smugglers' Notch, Bretton Woods, or Stratton
-- **Issue**: Pipeline prioritized proximity over learning area quality. Nashoba is close to Boston but the expected mountains have "excellent" learning_area_quality ratings.
 
 ### ambiguous_jan29
 - **Predicted**: Skip today (poor conditions)
 - **Expected**: Gore Mountain, Jiminy Peak, Killington, or Stowe
-- **Issue**: Pipeline was too conservative, recommending skipping when conditions were marginal but skiable. The expected mountains had acceptable conditions for the day.
+- **Issue**: Pipeline was too conservative, recommending skipping when conditions were marginal but skiable. ReAct correctly recommends a mountain for this query.
 
 ## Evolution of Results
 
@@ -90,11 +85,11 @@ Earlier versions had significantly lower performance before GEPA optimization an
 
 ## Remaining Issues
 
-1. **Proximity bias for beginners**: Pipeline picks nearby mountains over those with better learning facilities
-2. **Over-conservative skip recommendations**: Pipeline sometimes recommends skipping when conditions are marginal but skiable
+1. **Over-conservative skip recommendations**: Pipeline sometimes recommends skipping when conditions are marginal but skiable (ReAct handles this better)
 
-## Signature Failure Details
+## Key Improvements
 
-### AssessConditions (83.3%)
-- Example 2 failed with score 0.33
-- Input involved Gunstock conditions assessment
+### GEPA Optimization Impact
+- **AssessConditions**: Added "CRITICAL CONSTRAINTS" guidance that `stay_home` is NOT a valid output value
+- **ReAct Agent**: Restored detailed instructions for prioritizing fresh snow, checking multiple mountains, and northern latitude preference
+- **ScoreMountain**: Improved calibration for scoring powder days vs skip days

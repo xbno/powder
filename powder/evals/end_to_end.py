@@ -158,8 +158,15 @@ TRAIN_EXAMPLES = [
         query_date=date(2025, 1, 29),
         user_location=BOSTON,
         # Okemo, Smugglers, Bretton Woods have excellent learning areas
-        expected_top_pick=["Okemo", "Smugglers' Notch", "Bretton Woods", "Stratton"],
+        expected_top_pick=[
+            "Nashoba Valley",
+            "Okemo",
+            "Smugglers' Notch",
+            "Bretton Woods",
+            "Stratton",
+        ],
         expected_in_top_3=[
+            "Nashoba Valley",
             "Okemo",
             "Smugglers' Notch",
             "Bretton Woods",

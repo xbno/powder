@@ -47,6 +47,15 @@ from powder.signatures import (
 )
 
 
+def load_optimized_predictor(signature_class, optimized_name: str) -> dspy.Predict:
+    """Load optimized predictor if available, otherwise return base predictor."""
+    optimized_path = Path(__file__).parent.parent / "optimized" / f"{optimized_name}.json"
+    predictor = dspy.Predict(signature_class)
+    if optimized_path.exists():
+        predictor.load(optimized_path)
+    return predictor
+
+
 def run_signature_eval(
     name: str,
     examples: list,
@@ -388,7 +397,7 @@ def run_all_evals(
         parse_result = run_signature_eval(
             name="ParseSkiQuery",
             examples=parse_query.get_examples(),
-            predictor=dspy.Predict(ParseSkiQuery),
+            predictor=load_optimized_predictor(ParseSkiQuery, "parse_query"),
             metric_fn=parse_query.get_metric(),
             verbose=verbose,
         )
@@ -398,7 +407,7 @@ def run_all_evals(
         assess_result = run_signature_eval(
             name="AssessConditions",
             examples=assess_conditions.get_examples(),
-            predictor=dspy.Predict(AssessConditions),
+            predictor=load_optimized_predictor(AssessConditions, "assess_conditions"),
             metric_fn=assess_conditions.get_metric(),
             verbose=verbose,
         )
@@ -408,7 +417,7 @@ def run_all_evals(
         score_result = run_signature_eval(
             name="ScoreMountain",
             examples=score_mountain.get_examples(),
-            predictor=dspy.Predict(ScoreMountain),
+            predictor=load_optimized_predictor(ScoreMountain, "score_mountain"),
             metric_fn=score_mountain.get_metric(),
             verbose=verbose,
         )
@@ -418,7 +427,7 @@ def run_all_evals(
         gen_result = run_signature_eval(
             name="GenerateRecommendation",
             examples=generate_recommendation.get_examples(),
-            predictor=dspy.Predict(GenerateRecommendation),
+            predictor=load_optimized_predictor(GenerateRecommendation, "generate_recommendation"),
             metric_fn=generate_recommendation.get_metric(),
             verbose=verbose,
         )

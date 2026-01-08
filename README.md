@@ -314,13 +314,13 @@ The evaluation framework measures agent performance with **deterministic metrics
 
 | Metric | Pipeline | ReAct |
 |--------|----------|-------|
-| **Hit@1** | 66.7% | **75.0%** |
-| **Hit@3** | 75.0% | **91.7%** |
-| **Constraint Satisfaction** | **92.3%** | na* |
+| **Hit@1** | **93.8%** | 87.5% |
+| **Hit@3** | **93.8%** | 87.5% |
+| **Constraint Satisfaction** | 100.0% | n/a* |
 
-*ReAct constraint metric is a measurement artifact (can't parse constraints from unstructured text).
+*ReAct constraint metric is n/a because it returns unstructured text.
 
-ReAct improved from 50% → 75% Hit@1 after GEPA optimization with `enable_tool_optimization=True`.
+Pipeline improved from 41.7% → 93.8% Hit@1 through Pydantic fixes and GEPA optimization.
 
 ### Metrics
 
@@ -333,13 +333,13 @@ ReAct improved from 50% → 75% Hit@1 after GEPA optimization with `enable_tool_
 
 ### Dataset
 
-39 labeled examples across 4 signatures + 12 end-to-end:
+47 labeled examples across 4 signatures + 16 end-to-end:
 
 - `ParseSkiQuery` - 12 examples (97.4% accuracy)
-- `AssessConditions` - 4 examples (100% after GEPA)
-- `ScoreMountain` - 8 examples (96.3% after GEPA)
+- `AssessConditions` - 4 examples (83.3%)
+- `ScoreMountain` - 8 examples (93.8%)
 - `GenerateRecommendation` - 7 examples (100% accuracy)
-- End-to-end - 12 examples with full ground truth
+- End-to-end - 16 examples with historic weather data
 
 ### Running Evals
 
