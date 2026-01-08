@@ -206,11 +206,11 @@ Save detailed execution traces with `--save-trace` for debugging and comparison:
 
 ```bash
 # Compare both agents on the same query
-python -m powder --date 2025-03-29 --save-trace --pipeline "Epic pass powder?"
-python -m powder --date 2025-03-29 --save-trace "Epic pass powder?"
+python -m powder --date 2025-03-29 --save-trace --pipeline "Worth skiing today?"
+python -m powder --date 2025-03-29 --save-trace "Worth skiing today?"
 ```
 
-**Example traces:** [Pipeline](traces/pipeline_2025-03-29_20260107_135253.json) | [ReAct](traces/react_2025-03-29_20260107_135340.json)
+**Example traces:** [Pipeline](traces/pipeline_2025-01-08_20260107_172606.json) | [ReAct](traces/react_2025-01-08_20260107_172133.json)
 
 | Trace Contents | Pipeline | ReAct |
 |----------------|----------|-------|
@@ -220,14 +220,14 @@ python -m powder --date 2025-03-29 --save-trace "Epic pass powder?"
 | `result.day_assessment` | Day quality, best available, context | - |
 | `result.scores` | 7 scored mountains with pros/cons | - |
 | `result.recommendation` | - | Final text output |
-| `lm_history` | 10 LLM calls (Parse + Assess + 7×Score + Generate) | 9 LLM calls showing Thought→Action→Observation loop |
+| `lm_history` | 10 LLM calls (Parse + Assess + 7×Score + Generate) | 4 LLM calls showing Thought→Action→Observation loop |
 
-The ReAct trace shows the agent's reasoning process:
+The ReAct trace shows the agent's reasoning process (skip day detection):
 ```
-Call 1: "I need to search for Epic pass mountains..."
-Call 3: "Mount Sunapee has 0cm fresh snow, let me check Mount Snow..."
-Call 5: "Attitash has 9.3cm fresh snow - best so far!"
-Call 7: "Let me check Stowe... 13.9cm! BEST POWDER"
+Call 1: "The user is asking if it's worth skiing today... Let me start by searching for nearby mountains"
+Call 2: "Nashoba Valley has essentially no snow (0 inches)... Let me check Wachusett Mountain"
+Call 3: "Wachusett Mountain also has no snow... Both mountains have essentially no base"
+Final:  "Not Recommended for Today - insufficient snow coverage"
 ```
 
 ## Setup
