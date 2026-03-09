@@ -22,7 +22,7 @@ from powder.evals import (
     assess_conditions,
 )
 from powder.evals.end_to_end import (
-    get_examples as get_e2e_examples,
+    TRAIN_EXAMPLES as E2E_EXAMPLES,
     EndToEndExample,
     EvalResult,
     calculate_hit_at_1,
@@ -45,15 +45,6 @@ from powder.signatures import (
     ScoreMountain,
     GenerateRecommendation,
 )
-
-
-def load_optimized_predictor(signature_class, optimized_name: str) -> dspy.Predict:
-    """Load optimized predictor if available, otherwise return base predictor."""
-    optimized_path = Path(__file__).parent.parent / "optimized" / f"{optimized_name}.json"
-    predictor = dspy.Predict(signature_class)
-    if optimized_path.exists():
-        predictor.load(optimized_path)
-    return predictor
 
 
 def run_signature_eval(
@@ -154,7 +145,7 @@ def run_end_to_end_eval(
 
             # Calculate metrics
             hit_1 = calculate_hit_at_1(example, top_pick)
-            hit_3 = calculate_hit_at_3(example, top_3, top_pick)
+            hit_3 = calculate_hit_at_3(example, top_3)
 
             # Build candidates list for constraint check
             candidates = [s["mountain"] for s in result.scores] if result.scores else []
@@ -396,8 +387,8 @@ def run_all_evals(
         # 1. ParseSkiQuery
         parse_result = run_signature_eval(
             name="ParseSkiQuery",
-            examples=parse_query.get_examples(),
-            predictor=load_optimized_predictor(ParseSkiQuery, "parse_query"),
+            examples=parse_query.get_trainset(),
+            predictor=dspy.Predict(ParseSkiQuery),
             metric_fn=parse_query.get_metric(),
             verbose=verbose,
         )
@@ -406,8 +397,8 @@ def run_all_evals(
         # 2. AssessConditions
         assess_result = run_signature_eval(
             name="AssessConditions",
-            examples=assess_conditions.get_examples(),
-            predictor=load_optimized_predictor(AssessConditions, "assess_conditions"),
+            examples=assess_conditions.get_trainset(),
+            predictor=dspy.Predict(AssessConditions),
             metric_fn=assess_conditions.get_metric(),
             verbose=verbose,
         )
@@ -416,8 +407,8 @@ def run_all_evals(
         # 3. ScoreMountain
         score_result = run_signature_eval(
             name="ScoreMountain",
-            examples=score_mountain.get_examples(),
-            predictor=load_optimized_predictor(ScoreMountain, "score_mountain"),
+            examples=score_mountain.get_trainset(),
+            predictor=dspy.Predict(ScoreMountain),
             metric_fn=score_mountain.get_metric(),
             verbose=verbose,
         )
@@ -426,21 +417,20 @@ def run_all_evals(
         # 4. GenerateRecommendation
         gen_result = run_signature_eval(
             name="GenerateRecommendation",
-            examples=generate_recommendation.get_examples(),
-            predictor=load_optimized_predictor(GenerateRecommendation, "generate_recommendation"),
+            examples=generate_recommendation.get_trainset(),
+            predictor=dspy.Predict(GenerateRecommendation),
             metric_fn=generate_recommendation.get_metric(),
             verbose=verbose,
         )
         results["signatures"]["GenerateRecommendation"] = gen_result
 
     # Filter E2E examples if specific example requested
-    all_e2e_examples = get_e2e_examples()
-    e2e_examples = all_e2e_examples
+    e2e_examples = E2E_EXAMPLES
     if example_id:
-        e2e_examples = [ex for ex in all_e2e_examples if ex.id == example_id]
+        e2e_examples = [ex for ex in E2E_EXAMPLES if ex.id == example_id]
         if not e2e_examples:
             print(f"\n⚠️  No example found with id: {example_id}")
-            print(f"   Available: {[ex.id for ex in all_e2e_examples]}")
+            print(f"   Available: {[ex.id for ex in E2E_EXAMPLES]}")
             return results
 
     # 5. End-to-End Pipeline

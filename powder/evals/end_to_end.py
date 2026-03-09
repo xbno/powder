@@ -158,15 +158,8 @@ TRAIN_EXAMPLES = [
         query_date=date(2025, 1, 29),
         user_location=BOSTON,
         # Okemo, Smugglers, Bretton Woods have excellent learning areas
-        expected_top_pick=[
-            "Nashoba Valley",
-            "Okemo",
-            "Smugglers' Notch",
-            "Bretton Woods",
-            "Stratton",
-        ],
+        expected_top_pick=["Okemo", "Smugglers' Notch", "Bretton Woods", "Stratton"],
         expected_in_top_3=[
-            "Nashoba Valley",
             "Okemo",
             "Smugglers' Notch",
             "Bretton Woods",
@@ -357,16 +350,13 @@ def calculate_skip_detection(prediction_top_pick: str) -> bool:
     return any(indicator in text_lower for indicator in skip_indicators)
 
 
-def calculate_hit_at_3(
-    example: EndToEndExample, prediction_top_3: list[str], top_pick: str = ""
-) -> bool:
-    """Check if any acceptable answer is in top 3 or top_pick."""
+def calculate_hit_at_3(example: EndToEndExample, prediction_top_3: list[str]) -> bool:
+    """Check if any acceptable answer is in top 3."""
     # Skip day examples: same as hit@1 (did they recommend skipping?)
     if example.expect_skip:
         return True  # If hit@1 passes for skip, hit@3 also passes
-    # Include top_pick text in the check (handles empty scores case)
-    combined_text = " ".join(prediction_top_3).lower() + " " + top_pick.lower()
-    return any(mtn.lower() in combined_text for mtn in example.expected_in_top_3)
+    top_3_text = " ".join(prediction_top_3).lower()
+    return any(mtn.lower() in top_3_text for mtn in example.expected_in_top_3)
 
 
 def calculate_constraint_satisfaction(
