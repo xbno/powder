@@ -1,5 +1,16 @@
 # DSPy Presentation — Anyscale Panel Round
 
+## **TODOs**
+
+- **Build slides** — paste this outline into slide tool (Gamma, Google Slides, etc.), add diagrams
+- **Re-branch `pre-gepa` from current `main`** — strip optimized JSONs again
+- **Test both branches** — verify pre-gepa looks bad, main looks good on demo queries
+- **Add mermaid diagrams** to slides (pipeline flow for Slide 5, GEPA loop for Slide 4)
+- **Dry run 1-2x** — full presentation with timing, practice branch-switching
+- **Build toy lunch demo script** (stretch, only if time)
+
+---
+
 **Format:** 20 min total. 6 slides, demo in the middle. Framed as a customer story.
 
 ---
@@ -73,7 +84,7 @@ GEPA (Genetic Evolution of Prompts and Assertions) — the optimizer that worked
 
 Key insight: the optimizer discovers edge cases you'd never think to write instructions for.
 
-**Scaling note:** Step 3 — evaluating N prompt candidates across hundreds of examples — is embarrassingly parallel. Each candidate × example pair is independent. This is a perfect fit for Ray: fan out evaluations across workers, collect scores, feed winners into the next generation.
+**Scaling note:** The generation loop is sequential (gen N+1 needs gen N's winners), but the expensive part — evaluating N candidates across M examples — is embarrassingly parallel within each generation. Each candidate × example pair is an independent LLM call. That's the part that maps to Ray: fan out N×M evaluations across workers, collect scores, select winners, repeat.
 
 **"But I don't have labeled data yet":** Cold-start with a stronger model — use GPT-4o or Claude to generate initial golden answers, review them manually, use those as your seed examples.
 
