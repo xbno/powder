@@ -87,23 +87,15 @@ flowchart TD
 
 **"Declare What, Not How"**
 
-- Analogy: **Prompt engineering is like writing driving directions by hand.** "Take the second left after the gas station." It works — until the gas station closes, or there's construction, or your friend takes a detour to grab coffee and starts from a different street. DSPy is GPS. You define where you want to go — the ins and outs — and it figures out the route for whatever model you're running right now.
+- Analogy: **It works like training a model, but for prompts.** You define what goes in and what comes out. You give it examples paired with their golden answers. The optimizer studies your examples, tries different versions, and combines the best ones into a final prompt measuring how many the LLM gets right. You never write the prompt yourself.
 
-- Three concepts, one sentence each *(keep it non-technical for AEs in the room)*:
+- Three concepts, one sentence each:
   - **Signature** = "I need text in, label out" — you define the ins and outs, not the prompt
-  - **Module** = chain signatures together like Lego blocks
-  - **Optimizer** = automatically finds the best prompts for your task and model
+  - **Module** = chain signatures together into a pipeline
+  - **Optimizer** = give it golden examples, it finds the best prompt
 - Simple diagram: `Signature → Module → Optimizer → Better Prompts`
-- Optional: show 4-line code example if audience is technical; skip if not
 
-```python
-class Classify(dspy.Signature):
-    text: str = dspy.InputField()
-    label: str = dspy.OutputField()
-
-classify = dspy.Predict(Classify)
-result = classify(text="I love this product")
-```
+**The shift:** This turns prompt engineering from vibes into a measurable practice. You're not guessing if your prompt is good — you're measuring it against labeled examples and optimizing for a score. But that means **your examples are everything**. Bad labels → bad prompts. Incomplete examples → blind spots. The quality ceiling is set by the examples you give it, not the optimizer.
 
 > *(Pause here)* "Any questions on the core concepts before I show how the optimizer works?"
 
@@ -113,14 +105,21 @@ result = classify(text="I love this product")
 
 **"GEPA: Genetic Evolution of Prompts"**
 
-Dumbed-down explanation for non-DSPy panel members:
+1. Start with a basic "seed" prompt and golden examples
+2. GEPA creates a bunch of revised prompts from the seed
+3. Evaluates each prompt against the golden examples
+4. Ranks them in order of performance
+5. Keeps top k winners to sample as seed for next generation
+6. Repeat
 
-1. You provide labeled examples (input → expected output)
-2. GEPA generates candidate prompt instructions
-3. Evaluates each candidate against your examples
-4. Keeps winners, mutates/crosses over → next generation
-
-Diagram: simple evolutionary loop (candidates → eval → select → mutate → repeat)
+```mermaid
+flowchart LR
+    A[Seed prompt] --> B[Generate N\nrevised prompts]
+    B --> C[Eval each against\ngolden examples]
+    C --> D[Rank by\nperformance]
+    D --> E[Keep top K\nwinners]
+    E -->|Next generation| B
+```
 
 Key insight: "The optimizer discovers edge cases you'd never think to write instructions for"
 
@@ -309,17 +308,26 @@ python -m powder --date 2025-01-08 --pipeline "Worth skiing today?"
 
 > **Audience question:** "So that was a powder day — clear winner. But what do you think an LLM does when *every* mountain has terrible conditions? Should it still recommend something?" *(Sets up the skip-day demo and highlights the hardest part of the problem)*
 
-### Demo 5 (Stretch) — Run GEPA Live (3 min)
+### Demo 5 (Stretch) — Run GEPA Live on a Toy Example (3 min)
 
-If time allows, run GEPA optimization on a single signature with 2-3 generations:
+**"Office Lunch Orders"** — a simple toy problem that shows GEPA in action:
+
+- **Setup:** 5 coworkers, each always orders the same thing (John = turkey club, Sarah = salad, Emily = pizza, etc.)
+- **Task:** Given a list of items ordered, predict *who* placed the orders
+- **Why it works:** The LLM has zero way to know the mapping without being told — it has to guess randomly
+- **Training data:** ~15 labeled examples like:
+  - "turkey club and a salad" → "John, Sarah"
+  - "turkey club and a pizza" → "John, Emily"
+  - "pizza and a salad" → "Emily, Sarah"
+- **Demo flow:**
+  1. Run the unoptimized prompt — LLM guesses wrong (0% accuracy)
+  2. Run GEPA for 2-3 generations (~2 min) — audience watches candidates evolve
+  3. Run the optimized prompt — LLM gets it right because GEPA wrote "John always orders the turkey club" into the prompt
+- **Punchline:** "The optimizer discovered the mapping from examples alone. Now imagine this at scale with 50 classification rules."
 
 ```bash
-# TBD: command to run GEPA on assess_conditions with logging
+# TBD: python anyscale_presentation/toy_lunch_demo.py
 ```
-
-- Audience watches candidates get generated, evaluated, scored in real-time
-- Even 2 minutes of this tells the story viscerally — "this is what replaces the manual tuning loop"
-- Show the evolution tree output: which candidates won, which were discarded, why
 
 ### Demo 6 (Optional) — Run Evals
 
