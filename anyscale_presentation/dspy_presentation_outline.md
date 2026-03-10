@@ -46,16 +46,40 @@ Tell this as a timeline most teams live through:
 5. **API format change** — chat vs completions, tool-use schemas change, structured output formats differ. Your prompt template breaks at the integration layer, not just the content layer.
 6. **The knowledge walks out the door** — the engineer who tuned the prompt leaves. Nobody knows *why* line 47 says "38-40°F with zero fresh snow = poor". There's no audit trail.
 
-Diagram: show this as a loop with breakpoints — `write prompt → test → expert reviews → tweak → ship → model changes → break → repeat`
+```mermaid
+flowchart TD
+    A[Engineer writes prompt] --> B[Test on a few offline examples]
+    B --> X{Looks good?}
+    X -->|No| A
+    X -->|Yes| G[Expert reviews outputs]
+    G --> H{Expert approves?}
+    H -->|No, gives feedback| A
+    H -->|Yes| C[Ship to production]
+
+    C --> D[Users/experts flag bad outputs]
+    D --> E[Engineer tweaks prompt]
+    E --> B
+
+    C --> F{Model update or\nprovider switch}
+    F -->|Breaks silently| D
+
+    E -.->|V3...V10\nNo regression suite\nPrompt is now 800 words| E
+
+    D -.->|Slow feedback loop\nDays/weeks to surface issues| E
+
+    F -.->|Same prompt\nDifferent behavior| D
+
+    style F fill:#f66,stroke:#333,color:#fff
+    style D fill:#f96,stroke:#333
+```
 
 **What goes wrong at scale:**
-- No version control on "what changed and why" — prompt changes are invisible diffs in a string
 - No eval to catch regressions — you find out from user complaints
 - Expert feedback loop is slow (days/weeks) and lossy (expert says "this is wrong" but can't articulate the fix)
 - Model changes silently shift behavior — same prompt, different model, different failure modes
 - 10 features × 3 model providers × quarterly model updates = 30+ manual tuning loops per year
 
-> **Audience question:** "Quick show of hands — how many of you have had to rewrite prompts after switching LLM providers or even just updating a model version?" *(Gets buy-in on the problem before presenting the solution)*
+> How many of you prompt ChatGPT or Claude differently today than you did a year ago? You adapted naturally — but your production prompts don't. They're frozen in time while the rest of the system continually improves.
 
 ---
 
@@ -63,10 +87,10 @@ Diagram: show this as a loop with breakpoints — `write prompt → test → exp
 
 **"Declare What, Not How"**
 
-- Dumbed-down analogy: **PyTorch is to neural nets as DSPy is to LLM programs**
-  - You define signatures (like layer shapes), DSPy generates/optimizes the prompts (like backprop finds weights)
+- Analogy: **Prompt engineering is like writing driving directions by hand.** "Take the second left after the gas station." It works — until the gas station closes, or there's construction, or your friend takes a detour to grab coffee and starts from a different street. DSPy is GPS. You define where you want to go — the ins and outs — and it figures out the route for whatever model you're running right now.
+
 - Three concepts, one sentence each *(keep it non-technical for AEs in the room)*:
-  - **Signature** = "I need text in, label out" — you describe the shape, not the prompt
+  - **Signature** = "I need text in, label out" — you define the ins and outs, not the prompt
   - **Module** = chain signatures together like Lego blocks
   - **Optimizer** = automatically finds the best prompts for your task and model
 - Simple diagram: `Signature → Module → Optimizer → Better Prompts`

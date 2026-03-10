@@ -1,6 +1,6 @@
-# Live Demo Script
+# Powder — Live Demo
 
-## Setup (do before presentation)
+## Setup
 
 ```bash
 cd ~/ml/powder
@@ -10,115 +10,159 @@ source .venv/bin/activate
 
 ---
 
-## Step 1 — Run the optimized pipeline (powder day)
+## The Pipeline
 
-> "Let's start with what the optimized system looks like.
-> February 17th was a big powder day in the Northeast."
+This system has 4 LLM calls, each with its own optimizable prompt (DSPy Signature):
 
-```bash
-.venv/bin/python -m powder --date 2025-02-17 --pipeline "Best powder with Ikon pass?"
+1. **Parse** — extract structured filters from natural language
+2. **Assess** — look at all mountains' weather and decide: is today worth skiing?
+3. **Score** — rate each mountain individually given the day context
+4. **Recommend** — synthesize everything into a final pick
+
+Each signature can be independently optimized with GEPA (Genetic Evolution of Prompts).
+
+```mermaid
+flowchart LR
+    subgraph Context
+        Q[Query]
+        D[Date]
+        L[Location]
+    end
+
+    subgraph Tools
+        C[get_mountain_conditions]
+        DT[get_driving_time]
+        CR[check_crowd_level]
+        S[(search_mountains)]
+    end
+
+    subgraph Signatures
+        P[ParseSkiQuery]
+        A[AssessConditions]
+        SC[ScoreMountain]
+        G[GenerateRec]
+    end
+
+    Q --> P --> S
+    L --> S
+    S --> C
+    S --> DT
+    D --> C
+    D --> CR
+    L --> DT
+    C --> A
+    DT --> A
+    A --> SC
+    SC --> G
+    CR --> G
+
+    G --> R[Recommendation]
 ```
-
-Walk through the output: parsed query, conditions, scores, final pick.
 
 ---
 
-## Step 2 — Run the optimized pipeline (skip day)
+## Step 1 — Live Query
 
-> "Now the hard test — what happens when every mountain has terrible conditions?
-> January 8th was brutally cold, almost no fresh snow."
+Run the pipeline against today's real weather data:
 
 ```bash
-.venv/bin/python -m powder --date 2025-01-08 --pipeline "Worth skiing today?"
+python -m powder --pipeline "Wheres the best place to go for powder with Ikon pass?"
 ```
 
-Point out: the system says "don't go." LLMs naturally want to recommend *something* —
-getting them to say "skip today" is the hardest part of the problem.
+The output walks through each pipeline stage:
+
+- **PARSED QUERY** — The LLM extracted `ikon` pass and `powder_chase` vibe from plain English. No regex, no hand-coded parser.
+- **DAY ASSESSMENT** — The system looked at every mountain's conditions and made a judgment call. This shared context cascades through everything downstream.
+- **MOUNTAIN SCORES** — Each mountain scored individually. Fresh snow, temperature, and drive time are all visible. The ranking should reflect reality.
+- **RECOMMENDATION** — Final pick with alternatives and caveats. If it's a bad day, the system says so.
 
 ---
 
-## Step 3 — Switch to the un-optimized branch
+## Step 2 — The Hard Test (Skip Day)
 
-> "That was with GEPA-optimized prompts. Let me show you what happens
-> with just the hand-written prompts — same code, same model, same data."
+January 8th, 2025 was brutally cold with almost no fresh snow. This is the hardest
+thing to get right — LLMs naturally want to be helpful and recommend *something*.
+
+```bash
+python -m powder --date 2025-01-08 --pipeline "Worth skiing today?"
+```
+
+The system says "don't go." Day quality is `poor`, all scores are below 55.
+AssessConditions creates shared context that cascades through the whole pipeline —
+when it says "poor day," every downstream score respects that.
+
+Teaching an LLM to say "skip today" required GEPA optimization.
+
+---
+
+## Step 3 — Before Optimization
+
+Now the same queries, but with the original hand-written prompts.
+Same code, same model, same data — only the prompt instructions change.
 
 ```bash
 git checkout pre-gepa
 ```
 
----
-
-## Step 4 — Run the same queries without optimization
-
 ```bash
-.venv/bin/python -m powder --date 2025-02-17 --pipeline "Best powder with Ikon pass?"
+python -m powder --date 2025-02-17 --pipeline "Best powder with Ikon pass?"
 ```
 
-> "Notice the differences — scores are off, ranking may be wrong,
-> the system is too generous with mediocre mountains."
+Scores are off. The system is too generous with mediocre mountains.
+Rankings may not match the actual conditions.
 
 ```bash
-.venv/bin/python -m powder --date 2025-01-08 --pipeline "Worth skiing today?"
+python -m powder --date 2025-01-08 --pipeline "Worth skiing today?"
 ```
 
-> "And on the skip day — does it still tell you to stay home,
-> or does it try to recommend something anyway?"
+Does it still tell you to stay home, or does it try to recommend something anyway?
 
 ---
 
-## Step 5 — Show the diff
+## Step 4 — The Diff
 
-> "So what actually changed? Let me show you exactly what
-> the optimizer discovered and added to the prompts."
+What exactly did the optimizer discover and add to the prompts?
 
 ```bash
 git diff pre-gepa main -- anyscale_presentation/prompts/assess_conditions.md
 ```
 
-> "Everything in green was written by GEPA, not a human.
-> It found a parsing bug, temperature edge cases, and ranking logic
-> that a human might take weeks to discover through user complaints."
+Everything in green was written by GEPA, not a human.
+It found a parsing bug (`"stay_home"` is not a valid output),
+temperature edge cases (`38-40°F with zero fresh snow = poor`),
+and ranking logic that a human might take weeks to discover through user complaints.
 
 ```bash
 git diff pre-gepa main -- anyscale_presentation/prompts/score_mountain.md
 ```
 
-> "The scoring prompt went from 19 lines to 71 lines.
-> GEPA added input/output specs, contextual boosts, a 6-step decision
-> framework, and tone guidance — all from analyzing failures."
+The scoring prompt went from 19 lines to 71 lines.
+GEPA added input/output specs, contextual boosts, a 6-step decision
+framework, and tone guidance — all from analyzing failures in labeled examples.
 
 ---
 
-## Step 6 — Switch back and run evals
+## Step 5 — Eval Suite
 
 ```bash
 git checkout main
 ```
 
 ```bash
-.venv/bin/python -m powder.evals.runner
+python -m powder.evals.runner
 ```
 
-> "This is the eval harness — deterministic metrics, no LLM-as-judge.
-> 47 labeled examples across 4 signatures plus 16 end-to-end tests.
-> This is what makes it a testable, measurable system instead of prompt vibes."
+Deterministic metrics, no LLM-as-judge. 47 labeled examples across 4 signatures
+plus 16 end-to-end tests. Pipeline went from 41.7% to 93.8% Hit@1 through optimization.
+
+This is what makes it a testable, measurable system instead of prompt vibes.
+You can run this in CI. When you swap models, you re-optimize and re-eval.
 
 ---
 
-## Talking points between steps
+## Key Takeaways
 
-**After Step 2** — "The skip-day detection is powered by the AssessConditions
-signature. It creates shared context that cascades through the whole pipeline.
-If it says 'poor day,' every downstream score respects that."
-
-**After Step 4** — "Same model, same code, same data. The only difference
-is the prompt instructions. That's the whole thesis — prompts are the weights
-of your LLM program, and you should optimize them systematically."
-
-**After Step 5** — "A human prompt engineer might eventually find all of these.
-But GEPA found them in 5 iterations for about $15. And it found them from
-failures in labeled examples — not from gut feel."
-
-**After Step 6** — "This eval suite is what makes DSPy practical in production.
-You can run this in CI. When you swap models, you re-optimize and re-eval.
-No more 'we changed the prompt and hope it still works.'"
+- Same model, same code, same data — the only difference is the prompt instructions
+- Prompts are the weights of your LLM program — optimize them systematically
+- GEPA found edge cases in 5 iterations for ~$15 that a human might take weeks to discover
+- The eval suite gives you CI/CD for prompt quality — no more "we changed the prompt and hope it still works"

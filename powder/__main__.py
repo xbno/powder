@@ -167,7 +167,71 @@ def _run_agent(query: str, query_date: date | None, location: dict, use_pipeline
             current_date=query_date,
             user_location=location,
         )
-        output = f"**{result.top_pick}**\n\nAlternatives: {result.alternatives}\n\n{result.caveat}"
+        # Build verbose output showing each pipeline stage
+        import textwrap
+        W = 90  # wrap width
+
+        sections = []
+
+        # 1. Parsed query
+        parsed = result.parsed
+        sections.append("PARSED QUERY")
+        sections.append(f"  Date: {parsed.target_date}")
+        if parsed.pass_type:
+            sections.append(f"  Pass: {parsed.pass_type}")
+        if parsed.max_drive_hours:
+            sections.append(f"  Max drive: {parsed.max_drive_hours}h")
+        if parsed.vibe:
+            sections.append(f"  Vibe: {parsed.vibe}")
+        if parsed.skill_level:
+            sections.append(f"  Skill: {parsed.skill_level}")
+        filters = []
+        if parsed.needs_terrain_parks: filters.append("parks")
+        if parsed.needs_glades: filters.append("glades")
+        if parsed.needs_beginner_terrain: filters.append("beginner")
+        if parsed.needs_expert_terrain: filters.append("expert")
+        if parsed.needs_night_skiing: filters.append("night")
+        if filters:
+            sections.append(f"  Needs: {', '.join(filters)}")
+
+        # 2. Day assessment
+        if hasattr(result, 'day_assessment') and result.day_assessment:
+            da = result.day_assessment
+            sections.append("")
+            sections.append("DAY ASSESSMENT")
+            sections.append(f"  Quality:  {da.day_quality}")
+            sections.append(f"  Best:     {da.best_available}")
+            wrapped = textwrap.fill(da.day_context, width=W, initial_indent="  Context:  ", subsequent_indent="            ")
+            sections.append(wrapped)
+
+        # 3. Scored mountains (top 5)
+        if result.scores:
+            sections.append("")
+            sections.append("MOUNTAIN SCORES")
+            for s in result.scores[:5]:
+                name = s["mountain"]["name"]
+                score = s["score"]
+                fresh = s["mountain"].get("conditions", {}).get("fresh_snow_24h_in", "?")
+                temp = s["mountain"].get("conditions", {}).get("temp_f", "?")
+                drive = s["mountain"].get("drive_time", {}).get("duration_minutes")
+                drive_str = f"{drive/60:.1f}h" if drive else "?"
+                sections.append(f"  {score:>5}  {name:<25} {fresh}\" fresh | {temp}°F | {drive_str} drive")
+
+        # 4. Final recommendation
+        sections.append("")
+        sections.append("RECOMMENDATION")
+        for line in textwrap.wrap(result.top_pick, width=W):
+            sections.append(f"  {line}")
+        sections.append("")
+        sections.append("ALTERNATIVES")
+        for line in textwrap.wrap(result.alternatives, width=W):
+            sections.append(f"  {line}")
+        sections.append("")
+        sections.append("CAVEAT")
+        for line in textwrap.wrap(result.caveat, width=W):
+            sections.append(f"  {line}")
+
+        output = "\n".join(sections)
 
         # Extract intermediate results for trace
         raw_result = {
