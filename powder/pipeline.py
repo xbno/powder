@@ -1,6 +1,7 @@
 """Explicit multi-step ski recommendation pipeline using DSPy signatures."""
 
 import json
+import sys
 import dspy
 from datetime import date, timedelta
 from pathlib import Path
@@ -196,7 +197,12 @@ class SkiPipeline(dspy.Module):
             f"({user_location['lat']}, {user_location['lon']})"
         )
 
+        def _status(msg):
+            sys.stderr.write(f"\r\033[K  {msg}")
+            sys.stderr.flush()
+
         # Step 1: Parse query -> returns ParsedQuery Pydantic model
+        _status("Parsing query...")
         result = self.parse_query(query=query, user_context=user_context)
         parsed = result.parsed  # ParsedQuery with proper types
 
@@ -204,11 +210,13 @@ class SkiPipeline(dspy.Module):
         target_date = self._resolve_date(parsed.target_date, current_date)
 
         # Step 2: Search for candidate mountains
+        _status("Searching mountains...")
         candidates = self._search_mountains(
             parsed, user_location["lat"], user_location["lon"]
         )
 
         if not candidates:
+            _status("Done.\n")
             return dspy.Prediction(
                 top_pick="No mountains found matching your criteria.",
                 alternatives="Try relaxing your filters (drive time, pass type, etc.)",
@@ -219,7 +227,9 @@ class SkiPipeline(dspy.Module):
             )
 
         # Step 3: Enrich with conditions and drive times
+        _status(f"Fetching conditions for {len(candidates)} mountains...")
         candidates = self._enrich_with_conditions(candidates, target_date)
+        _status(f"Fetching drive times for {len(candidates)} mountains...")
         candidates = self._enrich_with_drive_times(
             candidates, user_location["lat"], user_location["lon"]
         )
@@ -235,6 +245,7 @@ class SkiPipeline(dspy.Module):
             "needs_expert_terrain": parsed.needs_expert_terrain,
         })
 
+        _status("Assessing day conditions...")
         day_assessment = self.assess_conditions(
             all_candidates=json.dumps(candidates),
             user_preferences=user_prefs,
@@ -248,7 +259,8 @@ class SkiPipeline(dspy.Module):
 
         # Step 5: Score each mountain
         scored = []
-        for mountain in candidates:
+        for i, mountain in enumerate(candidates):
+            _status(f"Scoring mountain {i+1}/{len(candidates)}: {mountain['name']}...")
             score_result = self.score_mountain(
                 mountain=json.dumps(mountain),
                 user_preferences=user_prefs,
@@ -266,15 +278,19 @@ class SkiPipeline(dspy.Module):
         scored.sort(key=lambda x: float(x["score"]), reverse=True)
 
         # Step 6: Get crowd context for top candidates
+        _status("Checking crowd levels...")
         crowd_info = get_crowd_context(target_date, scored[0]["mountain"]["state"])
 
         # Step 7: Generate final recommendation
+        _status("Generating recommendation...")
         recommendation = self.generate_recommendation(
             query=query,
             day_assessment=day_context,
             scored_candidates=json.dumps(scored[:5]),  # Top 5
             crowd_context=json.dumps(crowd_info),
         )
+
+        _status("Done!\n")
 
         return dspy.Prediction(
             top_pick=recommendation.top_pick,
