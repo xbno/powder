@@ -11,132 +11,146 @@
 - **Agenda slide up front** — frame what you'll cover, build to next steps at the end
 - **Agentic angle** — agentic is a door they're looking to open to get new customers, lean into this
 
+**Narrative frame:** Tell it as a customer story. A team built an LLM app, it had quality problems, they fixed it with DSPy. The audience should see themselves in the story — not watch someone show off a side project.
+
 ---
 
-## Slide Outline (~5-7 slides + demo, 20 min total)
+## Slide Outline (6 slides + demo in the middle, 20 min total)
 
-### Slide 1: Title + Agenda
+### Slide 1: Title + Agenda (30s)
 
 **"DSPy: Programmatic LLM Optimization"**
 
 - Your name, date, "presented to Anycompany"
-- One-liner: "What if you could optimize prompts like you optimize model weights?"
+- One-liner: "What if you could optimize prompts the same way you optimize model weights?"
 
 **Agenda frame** *(Rich's advice: set expectations up front)*:
-1. The problem — why prompt engineering breaks down
-2. DSPy — a programmatic alternative
-3. Live demo — a real app optimized with DSPy
-4. What this means for Anycompany's LLM stack
-5. Next steps & discussion
+1. The problem — an app with LLM quality issues
+2. Why hand-tuning prompts couldn't fix it
+3. DSPy — a programmatic alternative
+4. Live demo — before and after optimization
+5. What this means for your LLM stack
 
 > "I'll keep slides light and spend most of our time in live code. Please jump in with questions at any point — I'd rather this be a conversation than a lecture."
 
 ---
 
-### Slide 2: The Problem — The Production Prompt Loop (3 min)
+### Slide 2: The App + The Problem (2.5 min)
 
-**"Prompt Engineering Doesn't Scale"**
+**"We Built an App. It Worked... Mostly."**
 
-Tell this as a timeline most teams live through:
+Introduce the app as a customer scenario:
 
-1. **V1: Engineer writes prompt** — reads API docs, tries a few examples, ships something that "works on my inputs"
-2. **V2: Experts review outputs** — domain experts flag bad outputs. "Why did it recommend Nashoba over Killington?" Engineer reads the complaint, adds a sentence to the prompt.
-3. **V3-V10: Whack-a-mole** — every fix creates new regressions nobody catches until an expert flags them weeks later. No regression suite. The prompt is now 800 words of accumulated patches.
-4. **Model update day** — provider upgrades `gpt-4-turbo` to a new checkpoint, or you switch from OpenAI to Claude. Half your carefully tuned phrasing stops working. You discover this in production, not in testing.
-5. **API format change** — chat vs completions, tool-use schemas change, structured output formats differ. Your prompt template breaks at the integration layer, not just the content layer.
-6. **The knowledge walks out the door** — the engineer who tuned the prompt leaves. Nobody knows *why* line 47 says "38-40°F with zero fresh snow = poor". There's no audit trail.
+> "Let's say you've built an app that recommends ski mountains. A user asks 'best powder day with my Ikon pass?' and the system checks real weather for 31 mountains, filters by pass type, scores each one, and gives a ranked recommendation. Four LLM calls, each with a hand-written prompt. You ship it. It works... mostly."
 
-**The two loops — LangChain vs DSPy**
+Then walk through what went wrong — use real failures from the app:
 
-With LangChain/LlamaIndex, production and prompt tuning are completely disconnected. Bad output in prod? An engineer opens the prompt file, rewrites it, hopes it doesn't break something else. Model update? Same thing — manual rewrite.
+1. **Users start complaining** — the system recommends Nashoba Valley (240 feet of vertical, basically a bunny hill) over Killington on a powder day. Why? The prompt didn't say "bigger mountains are better for powder."
+2. **Engineer patches the prompt** — adds a line about vertical drop. Now a different edge case breaks: 38°F with no fresh snow gets rated "fair" instead of "poor."
+3. **Whack-a-mole** — every fix creates new regressions nobody catches until the next complaint. The prompt is now 800 words of accumulated patches. No regression suite.
+4. **Model update** — you switch from GPT-4 to Claude. Half the carefully tuned phrasing stops working. You discover this in production.
+5. **The engineer leaves** — nobody knows *why* line 47 says "38-40°F with zero fresh snow = poor." There's no audit trail.
 
-With DSPy, the feedback loop closes automatically:
-- Bad output in prod → add it as a hard negative to your labeled examples → re-run the optimizer → ship updated prompts
-- Model update → re-optimize against the same examples → no manual rewrite
-- The pipeline code and tools never change — only the optimized prompts get updated
+> "Sound familiar? This is what every team with production LLM features lives through."
 
-```text
-LangChain/LlamaIndex:
-  Build pipeline ──→ Write prompts ──→ Ship ──→ Bad output ──→ Engineer rewrites prompt ──→ Ship
-                                                                    ↑                         │
-                                                                    └─── model update ────────┘
-                                                          (manual, slow, no regression tests)
-
-DSPy:
-  Build pipeline ──→ Optimize prompts ──→ Ship ──→ Bad output ──→ Add to examples ──→ Re-optimize ──→ Ship
-                          ↑                                                               │
-                          └──────────────── model update ─────────────────────────────────┘
-                                            (automated, measured, with eval suite)
-```
-
-The pipeline code stays the same. The tools stay the same. Only the prompts update — and they update through optimization, not manual editing.
-
-**What goes wrong at scale:**
+**Why this doesn't scale:**
 - No eval to catch regressions — you find out from user complaints
-- Expert feedback loop is slow (days/weeks) and lossy (expert says "this is wrong" but can't articulate the fix)
-- Model changes silently shift behavior — same prompt, different model, different failure modes
-- 10 features × 3 model providers × quarterly model updates = 30+ manual tuning loops per year
-
-> How many of you prompt ChatGPT or Claude differently today than you did a year ago? You adapted naturally — but your production prompts don't. They're frozen in time while the rest of the system continually improves.
+- Expert feedback is slow (days/weeks) and lossy
+- Model changes silently shift behavior — same prompt, different results
+- 10 features × 3 providers × quarterly updates = 30+ manual tuning loops per year
 
 ---
 
-### Slide 3: What DSPy Is (3 min)
+### Slide 3: DSPy — The Framework (2 min)
 
-**"The Missing Piece in LLM Frameworks"**
+**"What If You Didn't Have to Write the Prompts?"**
 
-Other frameworks (LangChain, LlamaIndex, etc.) let you chain LLM calls together and plug in tools — but you still hand-write every prompt and manually tune it. That's the loop from Slide 2. DSPy keeps the composability but replaces the hand-written prompts with something you can optimize programmatically.
+Other frameworks (LangChain, LlamaIndex) let you chain LLM calls together and plug in tools — but you still hand-write every prompt and manually tune it. That's the loop from Slide 2. DSPy keeps the composability but replaces the hand-written prompts with something you can optimize programmatically.
 
 - Three building blocks:
-  - **Signature** = declare your inputs and outputs. "I need a query in, a parsed structure out." You define the *shape* — DSPy generates the actual prompt. This is what other frameworks make you write by hand.
-  - **Tool** = a regular function the LLM can call. Database lookups, API calls, calculations. Same as any other framework — you build these once and they're composable.
-  - **Module** = how you wire signatures and tools together. Two options:
-    - **Pipeline** = you decide the execution order. Predictable, testable, each step optimizable independently.
-    - **ReAct agent** = the LLM decides the order. Same signatures, same tools, but the LLM is the orchestrator.
+  - **Signature** = declare your inputs and outputs. "I need weather data in, day quality rating out." You define the *shape* — DSPy generates the actual prompt. This is what other frameworks make you write by hand.
+  - **Tool** = a regular function the LLM can call. Database lookups, weather APIs, routing. You build these once and they're reusable across different architectures.
+  - **Module** = how you wire signatures and tools together. You can build a deterministic pipeline or a ReAct agent from the same parts.
 
-- **Optimizer** = give it labeled examples, it finds better prompts for your signatures. This is what no other framework does — it closes the loop from Slide 2 automatically.
+- **Optimizer** = give it labeled examples, it finds better prompts for your signatures. This is what no other framework does — it closes the feedback loop automatically.
 
-**The shift:** This turns prompt engineering from vibes into a measurable practice. You're not guessing if your prompt is good — you're measuring it against labeled examples and optimizing for a score. But that means **your examples are everything**. Bad labels → bad prompts. Incomplete examples → blind spots. The quality ceiling is set by the examples you give it, not the optimizer.
+**The shift:** This turns prompt engineering from vibes into a measurable practice. You're not guessing if your prompt is good — you're measuring it against labeled examples and optimizing for a score. But that means **your examples are everything**. Bad labels → bad prompts. Incomplete examples → blind spots.
 
-> *(Pause here)* "Any questions on the framework before I show a real example?"
+> *(Pause)* "Questions on the framework before I show how the optimizer works?"
 
 ---
 
-### Slide 4: The App — Powder (2 min)
+### Slide 4: GEPA — How Optimization Works (2 min)
 
-**"Where Should I Ski Today?"**
+**"How Do You Actually Optimize the Prompts?"**
 
-- Problem: 31 mountains, variable weather, personal preferences → too many variables for a human to track
-- Input: natural language query + date + location
-- Output: ranked recommendation with scores, pros/cons, skip-day detection
+DSPy supports multiple optimizers. For this app, **GEPA** (Genetic Evolution of Prompts and Assertions) worked best because the prompts needed better *instructions*, not just more examples.
 
-**4 Signatures** — each is an independent LLM call with declared ins/outs:
+GEPA in 6 steps:
 
-| Signature | Input | Output |
-| --- | --- | --- |
-| ParseSkiQuery | natural language query | structured filters (pass, vibe, drive time) |
-| AssessConditions | all mountains' weather | day quality + shared context |
-| ScoreMountain | one mountain + day context | numeric score + pros/cons |
-| GenerateRecommendation | scored list + crowd info | top pick + alternatives |
+1. Start with a basic "seed" prompt and labeled examples with golden answers
+2. Generate a bunch of revised prompts from the seed
+3. Evaluate each revision against the golden examples
+4. Rank by performance
+5. Keep the top winners as seeds for the next generation
+6. Repeat
 
-**4 Tools** — composable functions both architectures share:
+```mermaid
+flowchart LR
+    A[Seed prompt] --> B[Generate N\nrevised prompts]
+    B --> C[Eval each against\ngolden examples]
+    C --> D[Rank by\nperformance]
+    D --> E[Keep top K\nwinners]
+    E -->|Next generation| B
+```
 
-| Tool | What it does |
-| --- | --- |
-| search_mountains | query the DB with filters (pass type, distance, terrain features) |
-| get_mountain_conditions | fetch weather for a lat/lon on a date |
-| get_driving_time | actual drive time from user's location |
-| check_crowd_level | is it a holiday/weekend/powder day? |
+Key insight: "The optimizer discovers edge cases you'd never think to write instructions for."
 
-> "These same signatures and tools can be wired up two different ways."
+> "Let me show you what that looks like on the ski app. Remember that prompt that kept breaking? Let's see what happens when we let the optimizer fix it instead of an engineer."
 
 ---
 
-### Slide 5: Two Architectures, Same Parts (2 min)
+### Demo Part 1: Single Signature Before/After (3 min)
 
-**Pipeline vs ReAct — same signatures, same tools, different wiring**
+**Show the problem on one prompt, then show GEPA's fix.**
 
-**Pipeline** — you control the flow:
+The AssessConditions signature looks at all mountains' weather and decides: is today worth skiing? This is the prompt the engineer kept patching.
+
+```bash
+# Pre-optimization: hand-written prompt
+git checkout pre-gepa
+python -m powder --date 2025-02-17 --pipeline "Best powder with Ikon pass?"
+```
+
+Walk through the output — point out the failures. Scores are off, wrong mountains ranked high, day assessment doesn't match reality.
+
+```bash
+# Post-optimization: GEPA-optimized prompt
+git checkout main
+python -m powder --date 2025-02-17 --pipeline "Best powder with Ikon pass?"
+```
+
+Same query, same data, same model, same code. Only the prompt instructions changed. Point out: correct mountain wins, scores are calibrated, assessment matches the actual conditions.
+
+```bash
+# Show exactly what GEPA added to the prompt
+git diff pre-gepa main -- anyscale_presentation/prompts/assess_conditions.md
+```
+
+Everything in green was written by the optimizer, not a human. It found:
+- A parsing bug (`"stay_home"` is not a valid output value)
+- Temperature edge cases (`38-40°F with zero fresh snow = poor`)
+- Ranking logic the engineer never thought to add
+
+> "This took 5 iterations and cost about $15. The engineer had been patching this prompt for weeks."
+
+---
+
+### Slide 5: Full Pipeline + Two Architectures (2 min)
+
+**"Now Scale That Across 4 Signatures"**
+
+That was one prompt. The ski app has four, wired together in a pipeline:
 
 ```mermaid
 flowchart LR
@@ -150,211 +164,78 @@ flowchart LR
     CR --> G[GenerateRec]
 ```
 
-- Deterministic execution order — same query always runs the same steps
-- Each signature independently optimizable and testable
-- You see exactly what happened at each stage
+Each signature is independently optimizable — you can improve AssessConditions without touching ScoreMountain. The tools (database, weather API, routing) are regular functions shared across everything.
 
-**ReAct agent** — the LLM controls the flow:
+**Same parts, different wiring:** You can also wire these same signatures and tools into a ReAct agent where the LLM decides the execution order. More flexible, less predictable. The pipeline got to 93.8% accuracy with optimization. The ReAct agent got to 87.5%.
 
-- Gets all 4 tools and a single agent signature
-- Decides what to call and in what order: "I should search first, then check conditions for the top 3, then..."
-- More flexible — can skip steps, backtrack, ask follow-ups
-- Harder to optimize (one big signature instead of four small ones)
-- Same tools, same data, but the LLM is the orchestrator
-
-**Tradeoff:** Pipeline went from 41.7% → 93.8% with optimization. ReAct got to 87.5%. The pipeline's structure makes each piece easier to measure and improve.
-
-> *(Pause here)* "Questions on pipeline vs agent before I show how optimization works?"
+> "The composability is the key — you build the signatures and tools once, then choose your architecture. Let me show you the full pipeline."
 
 ---
 
-### Slide 6: Optimization with GEPA (3 min)
+### Demo Part 2: Full Pipeline + Hard Cases (5 min)
 
-**"How Do You Actually Optimize the Prompts?"**
-
-DSPy supports multiple optimizers — BootstrapFewShot (adds examples to the prompt), MIPROv2 (instruction + example search), and others. For this project, **GEPA** (Genetic Evolution of Prompts and Assertions) worked best because the signatures needed better *instructions*, not just more examples.
-
-GEPA in 6 steps:
-
-1. Start with a basic "seed" prompt and golden examples
-2. GEPA creates a bunch of revised prompts from the seed
-3. Evaluates each prompt against the golden examples
-4. Ranks them in order of performance
-5. Keeps top k winners to sample as seed for next generation
-6. Repeat
-
-```mermaid
-flowchart LR
-    A[Seed prompt] --> B[Generate N\nrevised prompts]
-    B --> C[Eval each against\ngolden examples]
-    C --> D[Rank by\nperformance]
-    D --> E[Keep top K\nwinners]
-    E -->|Next generation| B
-```
-
-Key insight: "The optimizer discovers edge cases you'd never think to write instructions for"
-
-**Show the actual evolution tree** *(use AssessConditions as the example)*:
-
-```text
-Gen 0: Original docstring (41.7% Hit@1)
-  ├─ Candidate A: + output constraints ("stay_home" is NOT valid) → 58%
-  ├─ Candidate B: + temperature edge cases (38-40°F = poor) → 52%
-  └─ Candidate C: minor rewording → 43%
-Gen 1: A wins → mutate + crossover with B
-  ├─ A+B: output constraints + temp rules → 71%
-  ├─ A+ranking logic → 65%
-  └─ ...
-Gen 2: A+B wins → add more mutations
-  └─ + context narrative checklist → 82%
-Gen 3: Final convergence
-  └─ + ranking logic + preference weighting → 93.8%
-```
-
-*(Note: actual tree will be captured by re-running GEPA with logging — see Demo Prep below)*
-
-> **Audience question:** "If you had to optimize a prompt today — say for a classification task — what would your process look like? How would you know when you're done?" *(Opens the door to show that most teams don't have a rigorous answer, which is exactly what DSPy solves)*
-
----
-
-### Slide 7: What GEPA Learned — The Diff (2 min)
-
-**"Before/After Optimization"**
-
-Show the actual diff of `AssessConditions` (the best example — short original, dramatic additions):
-
-**Before** (human-written docstring):
-```
-Day quality calibration:
-- stay_home: Dangerous cold (<0°F), rain, ice storms...
-- poor: Brutal cold (0-10°F) with <2" fresh snow...
-```
-
-**After** (GEPA-optimized — additions highlighted):
-```diff
-+ CRITICAL CONSTRAINTS on day_quality output:
-+ - "stay_home" is NOT a valid day_quality value
-+ - If conditions are truly bad, use 'poor' instead
-+
-+ Temperature interpretation:
-+ - 38-40°F with zero fresh snow = poor
-+ - Warm temps (>40°F) with no fresh snow is especially bad
-+
-+ Ranking logic:
-+ - Fresh snow depth is the primary differentiator
-+ - For powder-focused users, heavily weight fresh snow and wind
-```
-
-| Failure Mode | GEPA's Fix |
-|--------------|------------|
-| Invalid "stay_home" output broke parsing | Added: `"stay_home" is NOT a valid day_quality value` |
-| 38-40°F misclassified as "fair" | Added: `38-40°F with zero fresh snow = poor` |
-| Nashoba (240ft vertical) recommended over Killington | Added: `small mountains like 240 ft vertical limit exploration` |
-| LLM too positive about mediocre days | Added: `A 65-score day is not "good" even if it has some positive aspects` |
-
-These are things a human prompt engineer *might* eventually find, but GEPA found them systematically from failures.
-
-> **Audience question:** "Looking at that table — which of those failure modes would you have caught first if you were hand-tuning? The parsing bug? The temperature edge case? The small mountain bias?" *(Makes the audience internalize that systematic optimization catches things humans miss or catch late, and gets them engaged with the specific examples)*
-
----
-
-### Slide 9: Results (1 min)
-
-**41.7% → 93.8% Hit@1**
-
-| Metric | Pipeline | ReAct |
-|--------|----------|-------|
-| **Hit@1** | **93.8%** | 87.5% |
-| **Hit@3** | **93.8%** | 87.5% |
-| **Constraint Satisfaction** | **100%** | n/a* |
-
-- All deterministic metrics — no LLM-as-judge
-- 47 labeled examples across 4 signatures + 16 end-to-end
-- Pipeline improved from 41.7% → 93.8% through GEPA optimization
-
----
-
-### Slide 10: Why Anycompany Should Care (2 min)
-
-**"What This Means for Your LLM Stack"**
-
-- **Model portability**: re-optimize when switching providers (GPT-4 → Claude → Llama) — no manual prompt rewrite
-- **Quality at scale**: systematic optimization > human intuition, especially across 10+ features
-- **Developer velocity**: engineers write Python, not prompts
-- **Cost reduction**: optimized prompts can be shorter and use fewer tokens
-- **Testability**: eval framework gives you CI/CD for prompt quality
-- **Agentic workflows** *(Rich flagged this as a key growth area for Anyscale)*: DSPy modules compose naturally into multi-step agents — each step independently optimizable, testable, and measurable
-
----
-
-### Slide 11: Next Steps + Discussion
-
-**"Where Do We Go From Here?"** *(Rich's advice: always build to next steps)*
-
-- Suggested next steps for Anycompany:
-  1. Identify 1-2 existing LLM features with known quality issues
-  2. Define eval metrics (what does "good" look like?)
-  3. Run DSPy optimization — measure before/after
-  4. Scale the pattern across features
-- "Happy to help scope a pilot or walk through your specific use cases"
-
-> Open floor: "What LLM challenges are you running into today? Where does prompt quality bite you?"
-
----
-
-## Live Demo Plan (~8-10 min)
-
-### Demo 1 — Before Optimization: Show the Problem (3 min)
-
-Start on the `pre-gepa` branch to show what unoptimized prompts produce:
+**Show the full pipeline working end-to-end, then push it with the hardest test.**
 
 ```bash
-git checkout pre-gepa
+# Full pipeline, optimized — a clear powder day
 python -m powder --date 2025-02-17 --pipeline "Best powder with Ikon pass?"
 ```
 
-- Walk through the output — point out specific failures:
-  - Wrong mountain ranked #1 (e.g., Nashoba over Killington)
-  - "stay_home" output that breaks parsing
-  - Scores that are too generous (70+ for mediocre days)
-- "This is what you get with a hand-written prompt. It *kind of* works, but the edge cases are brutal."
-
-### Demo 2 — After Optimization: Same Query, Better Results (2 min)
-
-Switch to `main` (GEPA-optimized) and run the same query:
+Walk through each stage: parsed query → day assessment → mountain scores → recommendation. The system pulls real weather, scores each mountain, picks the right one.
 
 ```bash
-git checkout main
-python -m powder --date 2025-02-17 --pipeline "Best powder with Ikon pass?"
-```
-
-- Same query, same data, dramatically different output
-- Point out: correct mountain wins, scores are calibrated, tradeoffs are honest
-- "The only thing that changed is the prompt instructions — same code, same model, same data"
-
-### Demo 3 — Show the Diff (2 min)
-
-```bash
-git diff pre-gepa main -- powder/optimized/assess_conditions.json
-```
-
-- Show the actual diff — audience sees exactly what GEPA added
-- Highlight the 3 key additions: output constraints, temperature interpretation, ranking logic
-- "A human might eventually find these — GEPA found them in 5 iterations for $15"
-
-### Demo 4 — Skip Day (2 min)
-
-```bash
+# The hard test — should the system say "don't go"?
 python -m powder --date 2025-01-08 --pipeline "Worth skiing today?"
 ```
 
-- Show: agent says "don't go" — -8°F, 0.4" avg snow
-- This is the hardest thing to get right — LLMs want to be helpful and recommend *something*
-- Highlight: AssessConditions produces `day_quality: "poor"` which cascades to low scores
+January 8th was brutally cold with almost no fresh snow. This is the hardest thing to get right — LLMs naturally want to be helpful and recommend *something*. The optimized system says "don't go." Day quality is `poor`, all scores are below 55. AssessConditions creates shared context that cascades through the whole pipeline — when it says "poor day," every downstream score respects that.
 
-> **Audience question:** "So that was a powder day — clear winner. But what do you think an LLM does when *every* mountain has terrible conditions? Should it still recommend something?" *(Sets up the skip-day demo and highlights the hardest part of the problem)*
+> "Teaching an LLM to say 'skip today' is something the hand-written prompt never got right. GEPA figured it out from the labeled examples."
 
-### Demo 5 (Stretch) — Run GEPA Live on a Toy Example (3 min)
+---
+
+### Slide 6: Results + What This Means + Next Steps (2 min)
+
+**"From 41.7% to 93.8%"**
+
+| Metric | Before | After |
+| --- | --- | --- |
+| Hit@1 (right mountain #1) | 41.7% | 93.8% |
+| Constraint Satisfaction | — | 100% |
+
+- Same model, same code, same data — only the prompt instructions changed
+- All deterministic metrics — no LLM-as-judge
+- 47 labeled examples across 4 signatures + 16 end-to-end tests
+- $15 in optimizer cost, 5 iterations
+
+**The feedback loop that makes this sustainable:**
+
+```text
+Bad output in prod → Add to examples → Re-optimize → Ship
+Model update       → Re-optimize against same examples → Ship
+```
+
+No manual prompt rewriting. The pipeline code and tools never change — only the optimized prompts get updated.
+
+**What this means for your LLM stack:**
+- **Model portability**: re-optimize when switching providers — no manual rewrite
+- **Quality at scale**: systematic optimization > human intuition, especially across 10+ features
+- **Testability**: eval framework gives you CI/CD for prompt quality
+- **Agentic workflows**: DSPy modules compose naturally into multi-step agents — each step independently optimizable
+
+**Next steps:**
+1. Identify 1-2 existing LLM features with known quality issues
+2. Define eval metrics — what does "good" look like?
+3. Run DSPy optimization — measure before/after
+4. Scale the pattern across features
+
+> "What LLM challenges are you running into today? Where does prompt quality bite you?"
+
+---
+
+## Stretch Demos (if time allows)
+
+### Stretch 1: Run GEPA Live on a Toy Example (3 min)
 
 **"Office Lunch Orders"** — a simple toy problem that shows GEPA in action:
 
@@ -375,7 +256,7 @@ python -m powder --date 2025-01-08 --pipeline "Worth skiing today?"
 # TBD: python anyscale_presentation/toy_lunch_demo.py
 ```
 
-### Demo 6 (Optional) — Run Evals
+### Stretch 2: Run Evals
 
 ```bash
 make eval
@@ -396,80 +277,58 @@ make eval
 - **Agenda → content → next steps** — frame up front what you'll cover, close with clear next steps
 - **Agentic angle matters** — this is a door they're trying to open for new customers
 
-### Anchoring for Non-DSPy Audience
-
-- The **PyTorch analogy** (Slide 3) is your anchor — keep coming back to it
-- "Signatures are like layer definitions, optimizers are like backprop for prompts"
-- When showing code, narrate what it does rather than expecting people to read it
-- For AEs: focus on business value (cost, quality, speed) not implementation details
-
 ### Storytelling Arc
 
-1. **Problem** → prompts don't scale (everyone feels this)
-2. **Solution** → DSPy makes it programmatic
-3. **Proof** → live demo with real data, measurable results
-4. **Value** → why Anycompany should adopt this pattern
-5. **Next steps** → concrete pilot proposal
+1. **Setup** → here's an app, it has LLM quality problems (audience sees themselves)
+2. **Why it's hard** → hand-tuning prompts doesn't scale (everyone feels this)
+3. **The framework** → DSPy separates what from how
+4. **The optimizer** → GEPA finds what humans miss
+5. **Proof** → live demo, before and after, on real data
+6. **The offer** → here's how you adopt this pattern
 
 ### Tying Back to Anyscale (if asked)
 
 - GEPA's eval loop (parallel candidate evaluation) maps to Ray perfectly
 - Each generation's candidates can be evaluated in parallel via `ray.data.map_batches`
 - The expensive part (LLM evals per candidate) is embarrassingly parallel
-- Generation loop itself is sequential (like RL policy updates — Ray's oldest use case)
 - **Agentic on Ray**: each agent step as a Ray Serve actor, tool calls as Ray tasks — DSPy optimizes each step, Ray scales the execution
 - **Data-driven workloads**: DSPy optimization is inherently data-driven (labeled examples → metrics → optimization) — fits Anyscale's consumption model
 
 ### Time Management
 
-- Slides: ~8 min (Rich said couple slides — keep it tight)
-- Demo: ~8 min
-- Discussion/Q&A: ~4 min (built into pauses throughout)
-- If running short on time, skip Demo 4 (evals)
-- If running long, abbreviate Slide 5 (GEPA details) — the demo results speak louder
+- Slides 1-4: ~7 min (problem → framework → GEPA)
+- Demo part 1: ~3 min (single signature before/after)
+- Slide 5: ~2 min (full pipeline + architectures)
+- Demo part 2: ~5 min (full pipeline + skip day)
+- Slide 6: ~2 min (results + close)
+- Q&A woven throughout via pauses
+- If short on time: cut demo part 1, go straight to full pipeline
+- If long on time: add stretch demos (lunch orders, evals)
 
 ---
 
 ## Key Files for Demo Prep
 
 | Purpose | File |
-|---------|------|
+| --- | --- |
 | Run the agent | `python -m powder [query] --date [date] --pipeline` |
 | DSPy signatures | `powder/signatures.py` |
 | Pipeline flow | `powder/pipeline.py` |
 | GEPA-optimized prompts | `powder/optimized/*.json` |
+| Prompt diffs (readable) | `anyscale_presentation/prompts/*.md` |
 | Eval runner | `powder/evals/runner.py` |
 | Eval examples | `powder/evals/end_to_end.py` |
-| Results summary | `evaluation/evaluation_results.md` |
-| GEPA before/after | `docs/gepa_pipeline_comparison.md` |
 
 ---
 
-## Demo Prep — Branch Setup & GEPA Evolution Capture
+## Demo Prep Checklist
 
-### 1. Create `pre-gepa` branch
-
-- Branch from `main`
-- Reset `powder/optimized/*.json` to use original signature docstrings (from `signatures.py`) as instructions
-- This gives a live toggle: `git checkout pre-gepa` → bad results, `git checkout main` → good results
-
-### 2. Capture GEPA evolution tree
-
-- Re-run GEPA on `AssessConditions` only (cheapest, most dramatic improvement)
-- Instrument to log each generation: candidates, mutations, scores
-- Save artifacts: `anyscale_presentation/gepa_evolution/gen_0.txt`, `gen_1.txt`, etc.
-- Build the tree visual for Slide 4 from real data
-
-### 3. Verify branch-switching demo
-
-- Test that `pre-gepa` produces visibly wrong output on the same queries used in demos
-- Test that `main` produces correct output
-- Practice the `git checkout` flow so it's smooth in the live demo
-
-### 4. (Stretch) GEPA live-run command
-
-- Create a lightweight script that runs GEPA on one signature with verbose logging
-- Target: 2-3 generations, ~2 min runtime, visible candidate evaluation output
+1. **Verify `pre-gepa` branch** produces visibly wrong output on demo queries
+2. **Verify `main` branch** produces correct output on same queries
+3. **Practice `git checkout` flow** so branch-switching is smooth
+4. **Test the diff command** — `git diff pre-gepa main -- anyscale_presentation/prompts/assess_conditions.md`
+5. **Build toy lunch demo script** (stretch)
+6. **Dry run the full presentation** end-to-end with timing
 
 ---
 
@@ -481,4 +340,3 @@ make eval
 - Focused strictly on Hit@1 and Hit@3 as the optimization target
 - The optimized prompts are surprisingly readable — you can see exactly what it learned
 - Pattern: "judgment" signatures (Assess, Score) got heavy optimization; "structural" signatures (Parse, Generate) stayed mostly the same
-
