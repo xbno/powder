@@ -46,32 +46,30 @@ Tell this as a timeline most teams live through:
 5. **API format change** — chat vs completions, tool-use schemas change, structured output formats differ. Your prompt template breaks at the integration layer, not just the content layer.
 6. **The knowledge walks out the door** — the engineer who tuned the prompt leaves. Nobody knows *why* line 47 says "38-40°F with zero fresh snow = poor". There's no audit trail.
 
-```mermaid
-flowchart TD
-    A[Engineer writes prompt] --> B[Test on a few offline examples]
-    B --> X{Looks good?}
-    X -->|No| A
-    X -->|Yes| G[Expert reviews outputs]
-    G --> H{Expert approves?}
-    H -->|No, gives feedback| A
-    H -->|Yes| C[Ship to production]
+**The two loops — LangChain vs DSPy**
 
-    C --> D[Users/experts flag bad outputs]
-    D --> E[Engineer tweaks prompt]
-    E --> B
+With LangChain/LlamaIndex, production and prompt tuning are completely disconnected. Bad output in prod? An engineer opens the prompt file, rewrites it, hopes it doesn't break something else. Model update? Same thing — manual rewrite.
 
-    C --> F{Model update or\nprovider switch}
-    F -->|Breaks silently| D
+With DSPy, the feedback loop closes automatically:
+- Bad output in prod → add it as a hard negative to your labeled examples → re-run the optimizer → ship updated prompts
+- Model update → re-optimize against the same examples → no manual rewrite
+- The pipeline code and tools never change — only the optimized prompts get updated
 
-    E -.->|V3...V10\nNo regression suite\nPrompt is now 800 words| E
+```text
+LangChain/LlamaIndex:
+  Build pipeline ──→ Write prompts ──→ Ship ──→ Bad output ──→ Engineer rewrites prompt ──→ Ship
+                                                                    ↑                         │
+                                                                    └─── model update ────────┘
+                                                          (manual, slow, no regression tests)
 
-    D -.->|Slow feedback loop\nDays/weeks to surface issues| E
-
-    F -.->|Same prompt\nDifferent behavior| D
-
-    style F fill:#f66,stroke:#333,color:#fff
-    style D fill:#f96,stroke:#333
+DSPy:
+  Build pipeline ──→ Optimize prompts ──→ Ship ──→ Bad output ──→ Add to examples ──→ Re-optimize ──→ Ship
+                          ↑                                                               │
+                          └──────────────── model update ─────────────────────────────────┘
+                                            (automated, measured, with eval suite)
 ```
+
+The pipeline code stays the same. The tools stay the same. Only the prompts update — and they update through optimization, not manual editing.
 
 **What goes wrong at scale:**
 - No eval to catch regressions — you find out from user complaints
@@ -85,25 +83,98 @@ flowchart TD
 
 ### Slide 3: What DSPy Is (3 min)
 
-**"Declare What, Not How"**
+**"The Missing Piece in LLM Frameworks"**
 
-- Analogy: **It works like training a model, but for prompts.** You define what goes in and what comes out. You give it examples paired with their golden answers. The optimizer studies your examples, tries different versions, and combines the best ones into a final prompt measuring how many the LLM gets right. You never write the prompt yourself.
+Other frameworks (LangChain, LlamaIndex, etc.) let you chain LLM calls together and plug in tools — but you still hand-write every prompt and manually tune it. That's the loop from Slide 2. DSPy keeps the composability but replaces the hand-written prompts with something you can optimize programmatically.
 
-- Three concepts, one sentence each:
-  - **Signature** = "I need text in, label out" — you define the ins and outs, not the prompt
-  - **Module** = chain signatures together into a pipeline
-  - **Optimizer** = give it golden examples, it finds the best prompt
-- Simple diagram: `Signature → Module → Optimizer → Better Prompts`
+- Three building blocks:
+  - **Signature** = declare your inputs and outputs. "I need a query in, a parsed structure out." You define the *shape* — DSPy generates the actual prompt. This is what other frameworks make you write by hand.
+  - **Tool** = a regular function the LLM can call. Database lookups, API calls, calculations. Same as any other framework — you build these once and they're composable.
+  - **Module** = how you wire signatures and tools together. Two options:
+    - **Pipeline** = you decide the execution order. Predictable, testable, each step optimizable independently.
+    - **ReAct agent** = the LLM decides the order. Same signatures, same tools, but the LLM is the orchestrator.
+
+- **Optimizer** = give it labeled examples, it finds better prompts for your signatures. This is what no other framework does — it closes the loop from Slide 2 automatically.
 
 **The shift:** This turns prompt engineering from vibes into a measurable practice. You're not guessing if your prompt is good — you're measuring it against labeled examples and optimizing for a score. But that means **your examples are everything**. Bad labels → bad prompts. Incomplete examples → blind spots. The quality ceiling is set by the examples you give it, not the optimizer.
 
-> *(Pause here)* "Any questions on the core concepts before I show how the optimizer works?"
+> *(Pause here)* "Any questions on the framework before I show a real example?"
 
 ---
 
-### Slide 4: How Optimization Works (3 min)
+### Slide 4: The App — Powder (2 min)
 
-**"GEPA: Genetic Evolution of Prompts"**
+**"Where Should I Ski Today?"**
+
+- Problem: 31 mountains, variable weather, personal preferences → too many variables for a human to track
+- Input: natural language query + date + location
+- Output: ranked recommendation with scores, pros/cons, skip-day detection
+
+**4 Signatures** — each is an independent LLM call with declared ins/outs:
+
+| Signature | Input | Output |
+| --- | --- | --- |
+| ParseSkiQuery | natural language query | structured filters (pass, vibe, drive time) |
+| AssessConditions | all mountains' weather | day quality + shared context |
+| ScoreMountain | one mountain + day context | numeric score + pros/cons |
+| GenerateRecommendation | scored list + crowd info | top pick + alternatives |
+
+**4 Tools** — composable functions both architectures share:
+
+| Tool | What it does |
+| --- | --- |
+| search_mountains | query the DB with filters (pass type, distance, terrain features) |
+| get_mountain_conditions | fetch weather for a lat/lon on a date |
+| get_driving_time | actual drive time from user's location |
+| check_crowd_level | is it a holiday/weekend/powder day? |
+
+> "These same signatures and tools can be wired up two different ways."
+
+---
+
+### Slide 5: Two Architectures, Same Parts (2 min)
+
+**Pipeline vs ReAct — same signatures, same tools, different wiring**
+
+**Pipeline** — you control the flow:
+
+```mermaid
+flowchart LR
+    P[ParseSkiQuery] --> S[search_mountains]
+    S --> C[get_conditions]
+    S --> D[get_drive_time]
+    C --> A[AssessConditions]
+    D --> A
+    A --> SC[ScoreMountain\n×N mountains]
+    SC --> CR[check_crowd_level]
+    CR --> G[GenerateRec]
+```
+
+- Deterministic execution order — same query always runs the same steps
+- Each signature independently optimizable and testable
+- You see exactly what happened at each stage
+
+**ReAct agent** — the LLM controls the flow:
+
+- Gets all 4 tools and a single agent signature
+- Decides what to call and in what order: "I should search first, then check conditions for the top 3, then..."
+- More flexible — can skip steps, backtrack, ask follow-ups
+- Harder to optimize (one big signature instead of four small ones)
+- Same tools, same data, but the LLM is the orchestrator
+
+**Tradeoff:** Pipeline went from 41.7% → 93.8% with optimization. ReAct got to 87.5%. The pipeline's structure makes each piece easier to measure and improve.
+
+> *(Pause here)* "Questions on pipeline vs agent before I show how optimization works?"
+
+---
+
+### Slide 6: Optimization with GEPA (3 min)
+
+**"How Do You Actually Optimize the Prompts?"**
+
+DSPy supports multiple optimizers — BootstrapFewShot (adds examples to the prompt), MIPROv2 (instruction + example search), and others. For this project, **GEPA** (Genetic Evolution of Prompts and Assertions) worked best because the signatures needed better *instructions*, not just more examples.
+
+GEPA in 6 steps:
 
 1. Start with a basic "seed" prompt and golden examples
 2. GEPA creates a bunch of revised prompts from the seed
@@ -125,7 +196,7 @@ Key insight: "The optimizer discovers edge cases you'd never think to write inst
 
 **Show the actual evolution tree** *(use AssessConditions as the example)*:
 
-```
+```text
 Gen 0: Original docstring (41.7% Hit@1)
   ├─ Candidate A: + output constraints ("stay_home" is NOT valid) → 58%
   ├─ Candidate B: + temperature edge cases (38-40°F = poor) → 52%
@@ -143,31 +214,6 @@ Gen 3: Final convergence
 *(Note: actual tree will be captured by re-running GEPA with logging — see Demo Prep below)*
 
 > **Audience question:** "If you had to optimize a prompt today — say for a classification task — what would your process look like? How would you know when you're done?" *(Opens the door to show that most teams don't have a rigorous answer, which is exactly what DSPy solves)*
-
----
-
-### Slide 6: The Demo App — Powder (1 min)
-
-**"Where Should I Ski Today?"**
-
-- Problem: 31 mountains, variable weather, personal preferences → too many variables for a human to track
-- Input: natural language query + date + location
-- Output: ranked recommendation with scores, pros/cons, skip-day detection
-- Quick architecture diagram (simplified pipeline flow)
-
----
-
-### Slide 7: Pipeline Architecture (2 min)
-
-**4 Signatures, Each Independently Optimizable**
-
-```
-ParseSkiQuery → AssessConditions → ScoreMountain → GenerateRec
-```
-
-- Key design decision: **AssessConditions** creates shared context across all mountains — enables "skip day" detection
-- Point out: this is like a multi-step ML pipeline where each stage has its own "model"
-- Compared to ReAct (single signature, agent decides what to do) — Pipeline is more controllable and optimizable
 
 ---
 
